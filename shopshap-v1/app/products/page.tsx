@@ -1,24 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';  // Utilise ton client existant
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-
-type Shop = {
-  id: string;
-  name: string;
-  activity: string;
-  city: string;
-  photo_url?: string;
-  description?: string;
-};
+import Link from 'next/link';
 
 type Product = {
   id: string;
   name: string;
   price: number;
-  photo_url?: string;
-  stock?: number;
+  photo_url: string | null;
+  video_url: string | null;
+  description: string | null;
+  shop_id: string;
+};
+
+type ProductWithSignedUrls = Product & {
+  signedPhotoUrl: string | null;
+  signedVideoUrl: string | null;
 };
 
 const bottomMenuItems = [
@@ -60,83 +59,93 @@ const bottomMenuItems = [
   },
 ];
 
-export default function DashboardPage() {
-  const [shop, setShop] = useState<Shop | null>(null);
-  const [shopPhotoUrl, setShopPhotoUrl] = useState<string | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productPhotoUrls, setProductPhotoUrls] = useState<Record<string, string>>({});
+export default function ProductsListPage() {
+  const [products, setProducts] = useState<ProductWithSignedUrls[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenu, setOpenMenu] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchShopAndProducts = async () => {
+    async function fetchProducts() {
       setLoading(true);
+
+      // 1. Vérification utilisateur connecté
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
         router.replace('/login');
         return;
       }
-      const { data: shopData, error: shopError } = await supabase
+
+      // 2. Récupération du shop de l'utilisateur
+      const { data: shop, error: shopError } = await supabase
         .from('shops')
         .select('*')
         .eq('user_id', session.user.id)
         .single();
-      if (shopError || !shopData) {
+
+      if (shopError || !shop) {
         router.replace('/onboarding');
         return;
       }
-      setShop(shopData);
 
-      // Récupère la signed URL de la photo du shop
-      if (shopData.photo_url) {
-        const { data: urlData } = await supabase
-          .storage
-          .from('shop-photos')
-          .createSignedUrl(shopData.photo_url, 60 * 60);
-        setShopPhotoUrl(urlData?.signedUrl ?? null);
-      } else {
-        setShopPhotoUrl(null);
-      }
-
-      // Récupère les produits
-      const { data: productsData } = await supabase
+      // 3. Récupération des produits FILTRÉS par shop_id
+      const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('shop_id', shopData.id)
+        .eq('shop_id', shop.id)  // ✅ FILTRAGE PAR SHOP
         .order('created_at', { ascending: false });
-      setProducts(productsData || []);
 
-      // Pour chaque produit, génère la signed URL de la photo
-      const urls: Record<string, string> = {};
-      if (productsData && productsData.length > 0) {
-        await Promise.all(
-          productsData.map(async (product: Product) => {
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      // 4. Génération des signed URLs
+      if (data) {
+        const productsWithSignedUrls = await Promise.all(
+          data.map(async (product: Product) => {
+            let signedPhotoUrl: string | null = null;
+            let signedVideoUrl: string | null = null;
+
             if (product.photo_url) {
-              const { data: urlData } = await supabase
+              const { data: signedData, error } = await supabase
                 .storage
-                .from('product-photos')
+                .from('shop-photos') 
                 .createSignedUrl(product.photo_url, 60 * 60);
-              if (urlData?.signedUrl) {
-                urls[product.id] = urlData.signedUrl;
-              }
+              if (error) console.error('Erreur signedUrl photo:', error);
+              signedPhotoUrl = signedData?.signedUrl ?? null;
             }
+
+            if (product.video_url) {
+              const { data: signedData, error } = await supabase
+                .storage
+                .from('product-videos')
+                .createSignedUrl(product.video_url, 60 * 60);
+              if (error) console.error('Erreur signedUrl video:', error);
+              signedVideoUrl = signedData?.signedUrl ?? null;
+            }
+
+            return {
+              ...product,
+              signedPhotoUrl,
+              signedVideoUrl,
+            };
           })
         );
+        setProducts(productsWithSignedUrls);
       }
-      setProductPhotoUrls(urls);
-
       setLoading(false);
-    };
-
-    fetchShopAndProducts();
+    }
+    fetchProducts();
   }, [router]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-night text-night-foreground">
         <span className="animate-spin h-8 w-8 border-b-2 border-blue-500 rounded-full mb-4"></span>
-        <p>Chargement du dashboard…</p>
+        <p>Chargement du catalogue…</p>
       </div>
     );
   }
@@ -188,7 +197,7 @@ export default function DashboardPage() {
       </nav>
 
       {/* DESKTOP MENU */}
-      <nav className="hidden sm:flex gap-4 mb-6 pt-8 px-4 max-w-2xl mx-auto">
+      <nav className="hidden sm:flex gap-4 mb-6 pt-8 px-4 max-w-4xl mx-auto">
         {bottomMenuItems.map((item) => (
           <button
             key={item.label}
@@ -210,76 +219,70 @@ export default function DashboardPage() {
       </nav>
 
       {/* CONTENT */}
-      <section className="max-w-2xl mx-auto pt-6 px-2 sm:px-4">
-        {/* Bienvenue et profil */}
-        <div className="flex items-center gap-3 mb-5 flex-wrap">
-          {shopPhotoUrl && (
-            <img
-              src={shopPhotoUrl}
-              alt="Boutique"
-              className="w-14 h-14 rounded-full object-cover border border-night-foreground"
-            />
-          )}
-          <div className="flex-1 min-w-[50%]">
-            <h1 className="text-lg sm:text-2xl font-bold leading-tight break-words">
-              Bienvenue, {shop?.name} 👋
-            </h1>
-            <div className="text-night-foreground/70 text-sm">{shop?.activity} à {shop?.city}</div>
-            {shop?.description && (
-              <p className="text-night-foreground/50 text-xs mt-1">{shop.description}</p>
-            )}
-          </div>
+      <section className="max-w-4xl mx-auto pt-6 px-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+          <h1 className="text-2xl font-bold">Mon catalogue</h1>
+          <button
+            onClick={() => router.push('/products/add')}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+          >
+            + Ajouter un produit
+          </button>
         </div>
 
-        {/* Statut catalogue */}
         {products.length === 0 ? (
-          <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4 text-center mb-6">
-            <p className="mb-3 text-base sm:text-lg font-semibold text-yellow-200">Votre catalogue est vide !</p>
+          <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-8 text-center">
+            <p className="mb-4 text-lg font-semibold text-yellow-200">Votre catalogue est vide !</p>
             <button
               onClick={() => router.push('/products/add')}
-              className="bg-blue-600 text-white w-full py-3 rounded-lg text-base font-bold hover:bg-blue-700"
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700"
             >
               Ajouter mon premier produit
             </button>
           </div>
         ) : (
-          <>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 gap-2">
-              <h2 className="text-base sm:text-lg font-bold">Mes produits</h2>
-              <button
-                onClick={() => router.push('/products/add')}
-                className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold w-full sm:w-auto hover:bg-blue-700"
-              >
-                + Ajouter un produit
-              </button>
-            </div>
-            <ul className="space-y-3">
-              {products.map(product => (
-                <li
-                  key={product.id}
-                  className="flex items-center gap-3 bg-night-foreground/5 rounded-lg p-3 shadow-sm"
-                >
-                  {product.photo_url && productPhotoUrls[product.id] && (
-                    <img
-                      src={productPhotoUrls[product.id]}
-                      alt={product.name}
-                      className="w-12 h-12 rounded object-cover border border-night-foreground"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{product.name}</div>
-                    <div className="text-night-foreground/60 text-xs">{product.price} FCFA</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {products.map(product => (
+              <div key={product.id} className="bg-night-foreground/5 border border-night-foreground/20 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                {product.signedPhotoUrl ? (
+                  <img 
+                    src={product.signedPhotoUrl} 
+                    alt={product.name} 
+                    className="w-full h-48 object-cover rounded-lg mb-3"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-night-foreground/10 rounded-lg mb-3 flex items-center justify-center">
+                    <span className="text-night-foreground/50 text-sm">Pas d'image</span>
                   </div>
+                )}
+                
+                <h2 className="font-semibold text-lg mb-2 truncate">{product.name}</h2>
+                <p className="text-blue-400 font-bold text-xl mb-3">{product.price} FCFA</p>
+                
+                {product.signedVideoUrl && (
+                  <video 
+                    src={product.signedVideoUrl} 
+                    controls 
+                    className="w-full h-32 rounded mb-3"
+                  />
+                )}
+                
+                <div className="flex gap-2">
+                  <Link href={`/products/${product.id}`} className="flex-1">
+                    <button className="w-full bg-night-foreground/10 text-night-foreground py-2 rounded text-sm hover:bg-night-foreground/20 transition">
+                      Voir détail
+                    </button>
+                  </Link>
                   <button
                     onClick={() => router.push(`/products/${product.id}/edit`)}
-                    className="text-blue-400 underline text-xs"
+                    className="flex-1 bg-blue-600 text-white py-2 rounded text-sm hover:bg-blue-700 transition"
                   >
                     Modifier
                   </button>
-                </li>
-              ))}
-            </ul>
-          </>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </main>
