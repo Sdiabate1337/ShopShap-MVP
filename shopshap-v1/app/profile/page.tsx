@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useToasts } from '@/hooks/useToast';
+import Link from 'next/link';
 
 type Shop = {
   id: string;
@@ -200,11 +201,44 @@ function DeleteConfirmModal({
   );
 }
 
-const menuItems = [
-  { label: 'Accueil', route: '/dashboard', icon: '🏠' },
-  { label: 'Catalogue', route: '/products', icon: '📦' },
-  { label: 'Commandes', route: '/orders', icon: '📋' },
-  { label: 'Profil', route: '/profile', icon: '👤', active: true },
+const bottomMenuItems = [
+  {
+    label: 'Accueil',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M4 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0h6"></path>
+      </svg>
+    ),
+    route: '/dashboard',
+  },
+  {
+    label: 'Catalogue',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V7a2 2 0 00-2-2H6a2 2 0 00-2 2v6m16 0v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6m16 0H4"></path>
+      </svg>
+    ),
+    route: '/products',
+  },
+  {
+    label: 'Commandes',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a2 2 0 012-2h2a2 2 0 012 2v2m4 0V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10m16 0a2 2 0 01-2 2H7a2 2 0 01-2-2"></path>
+      </svg>
+    ),
+    route: '/orders',
+  },
+  {
+    label: 'Profil',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+      </svg>
+    ),
+    route: '/profile',
+    active: true,
+  },
 ];
 
 export default function ProfilePage() {
@@ -217,6 +251,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   // ✅ États pour les modals
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -243,6 +278,30 @@ export default function ProfilePage() {
     totalRevenue: 0,
     joinDate: '',
   });
+
+  // ✅ Fonction de déconnexion intelligente
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      
+      // Effacer le cache local
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+      
+      toast.success('Déconnecté', 'À bientôt !');
+      router.replace('/login');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      toast.error('Erreur', 'Problème lors de la déconnexion');
+    }
+  }, [router, toast]);
+
+  // ✅ Fonction avec confirmation
+  const handleLogoutWithConfirm = useCallback(() => {
+    setShowLogoutConfirm(true);
+  }, []);
 
   useEffect(() => {
     fetchProfileData();
@@ -293,7 +352,7 @@ export default function ProfilePage() {
             .createSignedUrl(shopData.photo_url, 3600);
           setShopPhotoUrl(urlData?.signedUrl ?? null);
         } catch (err) {
-          console.warn('Erreur photo:', err);
+          // Erreur silencieuse pour les URLs signées
         }
       }
 
@@ -459,10 +518,10 @@ export default function ProfilePage() {
       const { error: deleteError } = await supabase
         .from('shops')
         .update({ 
-          name: '[COMPTE SUPPRIMÉ - 2025-07-01 02:56:19]',
+          name: '[COMPTE SUPPRIMÉ - 2025-07-01 14:15:03]',
           activity: '[SUPPRIMÉ]',
           city: '[SUPPRIMÉ]',
-          description: 'Compte supprimé le 2025-07-01 02:56:19 UTC par Sdiabate1337'
+          description: 'Compte supprimé le 2025-07-01 14:15:03 UTC par Sdiabate1337'
         })
         .eq('id', shop.id);
 
@@ -490,7 +549,6 @@ export default function ProfilePage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-white text-sm">Chargement du profil...</p>
-          <p className="text-white/60 text-xs mt-2">Connecté : Sdiabate1337</p>
         </div>
       </div>
     );
@@ -498,6 +556,53 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-night via-night to-blue-950 pb-20 sm:pb-8">
+      {/* Modal de confirmation de déconnexion */}
+      {showLogoutConfirm && (
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            onClick={() => setShowLogoutConfirm(false)}
+          />
+          
+          {/* Modal */}
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7"></path>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-white">Confirmer la déconnexion</h3>
+              </div>
+              
+              <p className="text-gray-300 mb-6 text-sm">
+                Êtes-vous sûr de vouloir vous déconnecter ? Vous devrez vous reconnecter pour accéder à votre tableau de bord.
+              </p>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    handleLogout();
+                  }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Navigation Mobile */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 sm:hidden">
         <div className="relative">
@@ -520,7 +625,7 @@ export default function ProfilePage() {
             openMenu ? "max-h-80 py-2" : "max-h-0 py-0"
           }`}>
             <div className="flex flex-col items-center space-y-1 px-2">
-              {menuItems.map((item) => (
+              {bottomMenuItems.map((item) => (
                 <button
                   key={item.label}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-all w-full max-w-xs ${
@@ -540,10 +645,9 @@ export default function ProfilePage() {
               
               <button
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-900/20 transition-all w-full max-w-xs mt-2 border-t border-night-foreground/20 pt-4"
-                onClick={async () => {
+                onClick={() => {
                   setOpenMenu(false);
-                  await supabase.auth.signOut();
-                  router.replace('/login');
+                  handleLogoutWithConfirm();
                 }}
               >
                 <span>🚪</span>
@@ -557,7 +661,7 @@ export default function ProfilePage() {
       {/* Navigation Desktop */}
       <nav className="hidden sm:flex items-center justify-between p-4 max-w-6xl mx-auto">
         <div className="flex gap-2">
-          {menuItems.map((item) => (
+          {bottomMenuItems.map((item) => (
             <button
               key={item.label}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all text-sm ${
@@ -575,10 +679,7 @@ export default function ProfilePage() {
         
         <button
           className="text-red-400 hover:text-red-300 transition-colors text-sm font-medium"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            router.replace('/login');
-          }}
+          onClick={handleLogoutWithConfirm}
         >
           Déconnexion
         </button>
@@ -588,7 +689,38 @@ export default function ProfilePage() {
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <header className="mb-6">
+            
           <div className="bg-night-foreground/10 border border-night-foreground/20 rounded-xl p-6">
+
+                        {/* Navigation de retour */}
+            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-700/30">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
+              >
+                <svg 
+                  className="w-5 h-5 transition-transform group-hover:-translate-x-1" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth={2} 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                <span className="text-sm font-medium">Retour au dashboard</span>
+              </button>
+              
+              {/* Breadcrumb */}
+              <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+                <span>/</span>
+                <Link href="/dashboard" className="hover:text-gray-300 transition-colors">
+                  Dashboard
+                </Link>
+                <span>/</span>
+                <span className="text-blue-400">Profil</span>
+              </div>
+            </div>
+
             <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
               👤 Mon profil
             </h1>
@@ -840,15 +972,10 @@ export default function ProfilePage() {
                   <span className="text-night-foreground/70">Membre depuis :</span>
                   <div className="text-white font-medium">{stats.joinDate}</div>
                 </div>
-                <div>
-                  <span className="text-night-foreground/70">Session :</span>
-                  <div className="text-green-400 font-medium text-xs">Sdiabate1337 • Actif</div>
-                </div>
               </div>
             </div>
           </div>
         </div>
-
       </div>
 
       {/* ✅ Modal de sélection de thème */}

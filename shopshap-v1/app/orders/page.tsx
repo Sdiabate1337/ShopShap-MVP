@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useToasts } from '@/hooks/useToast';
+import Link from 'next/link';
 
 type Order = {
   id: string;
@@ -105,6 +106,7 @@ export default function OrdersPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -116,6 +118,30 @@ export default function OrdersPage() {
     totalRevenue: 0,
     monthRevenue: 0,
   });
+
+  // ✅ Fonction de déconnexion intelligente
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      
+      // Effacer le cache local
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+      
+      toast.success('Déconnecté', 'À bientôt !');
+      router.replace('/login');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      toast.error('Erreur', 'Problème lors de la déconnexion');
+    }
+  }, [router, toast]);
+
+  // ✅ Fonction avec confirmation
+  const handleLogoutWithConfirm = useCallback(() => {
+    setShowLogoutConfirm(true);
+  }, []);
 
   useEffect(() => {
     fetchOrders();
@@ -409,6 +435,53 @@ Cordialement 🙏`
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-night via-night to-blue-950 pb-20 sm:pb-8">
+      {/* Modal de confirmation de déconnexion */}
+      {showLogoutConfirm && (
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            onClick={() => setShowLogoutConfirm(false)}
+          />
+          
+          {/* Modal */}
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7"></path>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-white">Confirmer la déconnexion</h3>
+              </div>
+              
+              <p className="text-gray-300 mb-6 text-sm">
+                Êtes-vous sûr de vouloir vous déconnecter ? Vous devrez vous reconnecter pour accéder à votre tableau de bord.
+              </p>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    handleLogout();
+                  }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Enhanced Mobile Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 sm:hidden">
         <div className="relative">
@@ -455,13 +528,9 @@ Cordialement 🙏`
               {/* Logout Button */}
               <button
                 className="flex items-center gap-3 px-6 py-3 rounded-xl text-red-400 hover:bg-red-900/20 transition-all duration-200 w-64 mt-4 border-t border-night-foreground/20 pt-6"
-                onClick={async () => {
+                onClick={() => {
                   setOpenMenu(false);
-                  toast.auth.logoutSuccess();
-                  setTimeout(async () => {
-                    await supabase.auth.signOut();
-                    router.replace('/login');
-                  }, 1000);
+                  handleLogoutWithConfirm();
                 }}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -495,13 +564,7 @@ Cordialement 🙏`
         
         <button
           className="text-red-400 hover:text-red-300 font-medium transition-colors"
-          onClick={async () => {
-            toast.auth.logoutSuccess();
-            setTimeout(async () => {
-              await supabase.auth.signOut();
-              router.replace('/login');
-            }, 1000);
-          }}
+          onClick={handleLogoutWithConfirm}
         >
           Déconnexion
         </button>
@@ -512,6 +575,35 @@ Cordialement 🙏`
         {/* Enhanced Header Section */}
         <header className="mb-8">
           <div className="bg-night-foreground/10 backdrop-blur-xl border border-night-foreground/20 rounded-3xl p-8 shadow-2xl">
+             {/* Navigation de retour */}
+            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-700/30">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
+              >
+                <svg 
+                  className="w-5 h-5 transition-transform group-hover:-translate-x-1" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth={2} 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                <span className="text-sm font-medium">Retour au dashboard</span>
+              </button>
+              
+              {/* Breadcrumb */}
+              <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+                <span>/</span>
+                <Link href="/dashboard" className="hover:text-gray-300 transition-colors">
+                  Dashboard
+                </Link>
+                <span>/</span>
+                <span className="text-blue-400">Commandes</span>
+              </div>
+            </div>
+            
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6">
               <div className="flex-1">
                 <h1 className="text-4xl font-bold text-white mb-3 tracking-tight flex items-center gap-3">
@@ -1016,7 +1108,7 @@ Cordialement 🙏`
                       toast.warning('Annulation de commande', 'Confirmez pour annuler cette commande');
                       setTimeout(() => updateOrderStatus(selectedOrder.id, 'cancelled', selectedOrder.client_name), 1000);
                       setShowOrderModal(false);
-                    }}
+                                          }}
                     className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-4 px-6 rounded-xl font-bold transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3"
                   >
                     <span>❌</span>
@@ -1072,7 +1164,7 @@ Cordialement 🙏`
                     <div className="w-1 h-1 bg-red-400 rounded-full"></div>
                     Les preuves de paiement associées
                   </li>
-                                   <li className="flex items-center gap-2">
+                  <li className="flex items-center gap-2">
                     <div className="w-1 h-1 bg-red-400 rounded-full"></div>
                     L'historique complet
                   </li>
@@ -1100,6 +1192,7 @@ Cordialement 🙏`
           </div>
         </div>
       )}
+
     </main>
   );
 }

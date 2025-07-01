@@ -364,14 +364,6 @@ export default function ProductClientPage({
               <span className="text-white font-medium">{product.name}</span>
             </nav>
             
-            {/* ✅ Indicateur de slug */}
-            <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-xl border border-white/20 rounded-xl px-3 py-1 text-white text-xs font-medium">
-              <div className="flex items-center gap-1">
-                <div className="w-1 h-1 bg-green-400 rounded-full"></div>
-                <span>/{slug}/product/{productId}</span>
-              </div>
-            </div>
-            
             {/* Info boutique reste identique */}
             <div className="flex items-center gap-4">
               <div className="relative">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useToasts } from '@/hooks/useToast';
@@ -152,11 +152,37 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [openMenu, setOpenMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  
   const router = useRouter();
   const toast = useToasts();
 
   useEffect(() => {
     fetchDashboardData();
+  }, []);
+
+  // ✅ Fonction de déconnexion intelligente
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      
+      // Effacer le cache local
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+      
+      toast.success('Déconnecté', 'À bientôt !');
+      router.replace('/login');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      toast.error('Erreur', 'Problème lors de la déconnexion');
+    }
+  }, [router, toast]);
+
+  // ✅ Fonction avec confirmation
+  const handleLogoutWithConfirm = useCallback(() => {
+    setShowLogoutConfirm(true);
   }, []);
 
   const fetchDashboardData = async () => {
@@ -264,8 +290,55 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-night via-night to-blue-950 pb-20 sm:pb-8">
+      {/* Modal de confirmation de déconnexion */}
+      {showLogoutConfirm && (
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            onClick={() => setShowLogoutConfirm(false)}
+          />
+          
+          {/* Modal */}
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-600/20 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7"></path>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-white">Confirmer la déconnexion</h3>
+              </div>
+              
+              <p className="text-gray-300 mb-6 text-sm">
+                Êtes-vous sûr de vouloir vous déconnecter ? Vous devrez vous reconnecter pour accéder à votre tableau de bord.
+              </p>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    handleLogout();
+                  }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors text-sm"
+                >
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ✅ Navigation Mobile Ultra-Responsive */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 sm:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 sm:hidden">
         <div className="relative">
           {/* Bouton Menu Flottant */}
           <button
@@ -309,10 +382,9 @@ export default function DashboardPage() {
               
               <button
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-900/20 transition-all w-full max-w-xs mt-2 border-t border-night-foreground/20 pt-4"
-                onClick={async () => {
+                onClick={() => {
                   setOpenMenu(false);
-                  await supabase.auth.signOut();
-                  router.replace('/login');
+                  handleLogoutWithConfirm();
                 }}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -345,11 +417,8 @@ export default function DashboardPage() {
         </div>
         
         <button
-          className="text-red-400 hover:text-red-300 transition-colors text-sm sm:text-base font-medium"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            router.replace('/login');
-          }}
+          className="text-red-400 hover:text-red-300 transition-colors text-sm sm:text-base font-medium flex items-center gap-2"
+          onClick={handleLogoutWithConfirm}
         >
           <span className="hidden sm:inline">Déconnexion</span>
           <span className="sm:hidden">
@@ -557,11 +626,11 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* ✅ Footer avec date actuelle */}
-        <div className="text-center py-6 sm:py-8 mt-8 border-t border-night-foreground/20">
-          <div className="text-night-foreground/50 text-xs sm:text-sm">
-            <p>Connecté en tant que <strong className="text-white">Sdiabate1337</strong></p>
-            <p className="mt-1">01 Juillet 2025 • 02:31 UTC</p>
+        {/* Footer avec timestamp mis à jour */}
+        <div className="text-center py-8 mt-8 border-t border-night-foreground/20">
+          <div className="text-night-foreground/50 text-xs">
+            <p>Connecté : <strong className="text-white">Sdiabate1337</strong></p>
+            <p className="mt-1">2025-07-01 13:53:47 UTC</p>
           </div>
         </div>
       </div>
