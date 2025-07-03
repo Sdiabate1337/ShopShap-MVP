@@ -1,6 +1,100 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useToasts } from '@/hooks/useToast';
-import { validateAndFormatPhoneNumber, CountryConfig, SUPPORTED_COUNTRIES } from '@/lib/whatsapp-auth';
+
+// Client-side interfaces (without Twilio dependencies)
+interface CountryConfig {
+  code: string;
+  flag: string;
+  name: string;
+  pattern: RegExp;
+  prefix: string;
+  example: string;
+}
+
+// Supported countries configuration (client-side safe)
+export const SUPPORTED_COUNTRIES: CountryConfig[] = [
+  {
+    code: 'MA',
+    flag: '🇲🇦',
+    name: 'Maroc',
+    pattern: /^(212|0)?[67]\d{8}$/,
+    prefix: '212',
+    example: '+212612345678'
+  },
+  {
+    code: 'CI',
+    flag: '🇨🇮',
+    name: 'Côte d\'Ivoire',
+    pattern: /^(225|0)?[0-9]\d{7,8}$/,
+    prefix: '225',
+    example: '+22501234567'
+  },
+  {
+    code: 'SN',
+    flag: '🇸🇳',
+    name: 'Sénégal',
+    pattern: /^(221|0)?[7]\d{8}$/,
+    prefix: '221',
+    example: '+221701234567'
+  },
+  {
+    code: 'BF',
+    flag: '🇧🇫',
+    name: 'Burkina Faso',
+    pattern: /^(226|0)?[567]\d{7}$/,
+    prefix: '226',
+    example: '+22650123456'
+  },
+  {
+    code: 'ML',
+    flag: '🇲🇱',
+    name: 'Mali',
+    pattern: /^(223|0)?[679]\d{7}$/,
+    prefix: '223',
+    example: '+22360123456'
+  }
+];
+
+/**
+ * Client-side phone number validation (same logic as server-side)
+ */
+function validateAndFormatPhoneNumber(phoneNumber: string): {
+  isValid: boolean;
+  formatted?: string;
+  country?: CountryConfig;
+  error?: string;
+} {
+  const cleanNumber = phoneNumber.replace(/[\s\-\(\)]/g, '');
+  
+  // Try to match against supported countries
+  for (const country of SUPPORTED_COUNTRIES) {
+    const testNumber = cleanNumber.replace(/^\+/, '');
+    
+    if (country.pattern.test(testNumber)) {
+      let formatted = testNumber;
+      
+      // Add country code if missing
+      if (!formatted.startsWith(country.prefix)) {
+        // Remove leading 0 if present
+        if (formatted.startsWith('0')) {
+          formatted = formatted.substring(1);
+        }
+        formatted = country.prefix + formatted;
+      }
+      
+      return {
+        isValid: true,
+        formatted: '+' + formatted,
+        country
+      };
+    }
+  }
+  
+  return {
+    isValid: false,
+    error: 'Numéro non supporté. Pays supportés: ' + SUPPORTED_COUNTRIES.map(c => c.name).join(', ')
+  };
+}
 
 interface UseWhatsAppAuthReturn {
   // State
