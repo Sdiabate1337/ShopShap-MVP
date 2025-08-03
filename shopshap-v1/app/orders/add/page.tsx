@@ -310,7 +310,7 @@ export default function AddOrderPage() {
       toast.success('Produit sélectionné', `${product.name} - ${product.price.toLocaleString()} FCFA`);
       
       // ✨ Stock warning
-      if (product.stock !== null && product.stock <= 2) {
+      if (product.stock !== undefined && product.stock !== null && product.stock <= 2) {
         setTimeout(() => {
           toast.warning('Stock faible', `Attention: il ne reste que ${product.stock} unité(s) en stock`);
         }, 500);
@@ -743,7 +743,7 @@ export default function AddOrderPage() {
                     {products.map(product => (
                       <option key={product.id} value={product.id}>
                         {product.name} - {product.price.toLocaleString()} FCFA
-                        {product.stock !== null && product.stock <= 2 && ` (Stock: ${product.stock})`}
+                        {product.stock !== undefined && product.stock !== null && product.stock <= 2 && ` (Stock: ${product.stock})`}
                         {product.category && ` [${product.category}]`}
                       </option>
                     ))}
