@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { useToasts } from '@/hooks/useToast';
 
-// Types
+// ✨ Enhanced Types
 interface FormData {
   name: string;
   activity: string;
   city: string;
   photo: File | null;
   description: string;
+  slug: string;
 }
 
 interface ValidationErrors {
@@ -20,9 +21,319 @@ interface ValidationErrors {
   activity?: string;
   city?: string;
   photo?: string;
+  slug?: string;
 }
 
-export default function OnboardingPage() {
+// ✨ Activity Suggestions
+const popularActivities = [
+  { icon: '👗', name: 'Mode & Vêtements' },
+  { icon: '💄', name: 'Beauté & Cosmétiques' },
+  { icon: '📱', name: 'Électronique & Tech' },
+  { icon: '🍽️', name: 'Alimentation & Boissons' },
+  { icon: '🏠', name: 'Maison & Décoration' },
+  { icon: '⚽', name: 'Sport & Loisirs' },
+  { icon: '📚', name: 'Éducation & Livres' },
+  { icon: '🎨', name: 'Art & Artisanat' },
+];
+
+// ✨ City Suggestions
+const popularCities = [
+  { country: '🇸🇳', name: 'Dakar' },
+  { country: '🇨🇮', name: 'Abidjan' },
+  { country: '🇲🇱', name: 'Bamako' },
+  { country: '🇧🇫', name: 'Ouagadougou' },
+  { country: '🇳🇪', name: 'Niamey' },
+  { country: '🇹🇩', name: 'N\'Djamena' },
+  { country: '🇲🇦', name: 'Casablanca' },
+  { country: '🇹🇳', name: 'Tunis' },
+];
+
+// ✨ Modern Loading Component
+function ModernLoadingSpinner() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black">
+      <div className="relative">
+        {/* Animated rings */}
+        <div className="w-24 h-24 border-4 border-blue-200/20 rounded-full animate-pulse"></div>
+        <div className="absolute inset-2 w-20 h-20 border-4 border-blue-400/40 border-t-blue-500 rounded-full animate-spin"></div>
+        <div className="absolute inset-4 w-16 h-16 border-4 border-purple-400/40 border-t-purple-500 rounded-full animate-spin" style={{animationDirection: 'reverse', animationDuration: '2s'}}></div>
+        
+        {/* Center shop icon */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-xl">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div className="mt-8 text-center space-y-3">
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+          <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+          <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+        </div>
+        <p className="text-white/90 text-xl font-semibold">Préparation de votre espace</p>
+        <p className="text-white/60 text-sm">Configuration de votre boutique en cours...</p>
+      </div>
+    </div>
+  );
+}
+
+// ✨ Enhanced Progress Bar
+function ProgressBar({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
+  const progress = (currentStep / totalSteps) * 100;
+  
+  return (
+    <div className="relative mt-8">
+      <div className="w-full bg-slate-800/50 rounded-full h-3 overflow-hidden border border-slate-700/50">
+        <div 
+          className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-cyan-500 transition-all duration-700 ease-out relative overflow-hidden"
+          style={{ width: `${progress}%` }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0 animate-pulse"></div>
+        </div>
+      </div>
+      
+      <div className="flex justify-between text-xs mt-3">
+        {Array.from({ length: totalSteps }, (_, i) => (
+          <div key={i} className="flex flex-col items-center">
+            <div className={`w-3 h-3 rounded-full transition-all duration-300 ${
+              i + 1 <= currentStep 
+                ? 'bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg' 
+                : 'bg-slate-700/50'
+            }`}></div>
+            <span className={`mt-2 font-medium ${
+              i + 1 <= currentStep ? 'text-blue-400' : 'text-slate-500'
+            }`}>
+              {i === 0 ? 'Infos' : i === 1 ? 'Lieu' : 'Style'}
+            </span>
+          </div>
+        ))}
+      </div>
+      
+      <div className="text-center mt-4">
+        <span className="text-slate-400 text-sm">Étape </span>
+        <span className="text-white font-bold">{currentStep}</span>
+        <span className="text-slate-400 text-sm"> sur {totalSteps}</span>
+      </div>
+    </div>
+  );
+}
+
+// ✨ Enhanced Photo Upload Component
+function PhotoUploadZone({ photoPreview, onFileChange, onRemove, errors }: {
+  photoPreview: string | null;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
+  errors: ValidationErrors;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      const fakeEvent = {
+        target: { files }
+      } as React.ChangeEvent<HTMLInputElement>;
+      onFileChange(fakeEvent);
+    }
+  };
+
+  return (
+    <div className="text-center space-y-4">
+      <div className="relative inline-block">
+        <div 
+          className={`w-40 h-40 border-2 border-dashed rounded-3xl flex items-center justify-center overflow-hidden transition-all duration-300 ${
+            isDragging 
+              ? 'border-blue-500 bg-blue-500/10 scale-105' 
+              : photoPreview 
+              ? 'border-slate-600/50 bg-slate-800/30' 
+              : 'border-slate-600/50 bg-slate-800/20 hover:border-blue-400/50 hover:bg-slate-800/40'
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {photoPreview ? (
+            <div className="relative w-full h-full group">
+              <img 
+                src={photoPreview} 
+                alt="Aperçu" 
+                className="w-full h-full object-cover" 
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-full transition-all duration-300 hover:scale-110 active:scale-95"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-600/20 to-purple-600/20 rounded-2xl flex items-center justify-center mx-auto">
+                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+              </div>
+              <div>
+                <p className="text-white font-semibold text-sm">Ajoutez une photo</p>
+                <p className="text-slate-400 text-xs">Glissez ou cliquez pour choisir</p>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {!photoPreview && (
+          <label className="absolute bottom-2 right-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 rounded-2xl cursor-pointer transition-all duration-300 shadow-xl hover:scale-110 active:scale-95">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={onFileChange}
+              className="hidden"
+            />
+          </label>
+        )}
+      </div>
+      
+      <div className="space-y-2">
+        <p className="text-slate-400 text-sm">
+          Une belle photo inspire confiance à vos clients
+        </p>
+        <p className="text-slate-500 text-xs">
+          JPG, PNG • Max 5MB • Recommandé: 400x400px
+        </p>
+        {errors.photo && (
+          <p className="text-red-400 text-sm flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            {errors.photo}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ✨ Enhanced Input Field Component
+function EnhancedInput({ 
+  label, 
+  name, 
+  value, 
+  onChange, 
+  placeholder, 
+  error, 
+  required = false,
+  suggestions = [],
+  onSuggestionClick 
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder: string;
+  error?: string;
+  required?: boolean;
+  suggestions?: any[];
+  onSuggestionClick?: (suggestion: string) => void;
+}) {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const hasValue = value.trim().length > 0;
+  
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-semibold text-slate-300">
+        {label} {required && <span className="text-red-400">*</span>}
+      </label>
+      
+      <div className="relative">
+        <input
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          onFocus={() => setShowSuggestions(suggestions.length > 0)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          className={`w-full bg-slate-800/40 backdrop-blur-xl border-2 rounded-2xl px-6 py-4 text-white placeholder-slate-400 focus:outline-none transition-all duration-300 ${
+            error 
+              ? 'border-red-500/50 focus:border-red-400 focus:ring-2 focus:ring-red-400/20 focus:bg-red-900/10'
+              : hasValue && !error
+              ? 'border-green-500/50 focus:border-green-400 focus:ring-2 focus:ring-green-400/20 focus:bg-green-900/10'
+              : 'border-slate-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-slate-700/30'
+          }`}
+        />
+        
+        {/* Success Indicator */}
+        {hasValue && !error && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+            <div className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center">
+              <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+          </div>
+        )}
+        
+        {/* Suggestions Dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl z-10 max-h-60 overflow-y-auto">
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => {
+                  onSuggestionClick?.(suggestion.name || suggestion);
+                  setShowSuggestions(false);
+                }}
+                className="w-full text-left px-6 py-3 hover:bg-slate-700/50 transition-colors duration-200 flex items-center gap-3 first:rounded-t-2xl last:rounded-b-2xl"
+              >
+                {suggestion.icon && <span className="text-lg">{suggestion.icon}</span>}
+                {suggestion.country && <span className="text-lg">{suggestion.country}</span>}
+                <span className="text-white">{suggestion.name || suggestion}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {error && (
+        <div className="flex items-center gap-2 text-red-400 text-sm">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ✨ Main Onboarding Component
+export default function UltraModernOnboardingPage() {
   const { user } = useAuth();
   const toast = useToasts();
   const router = useRouter();
@@ -33,7 +344,8 @@ export default function OnboardingPage() {
     activity: '',
     city: '',
     photo: null,
-    description: ''
+    description: '',
+    slug: ''
   });
   
   const [loading, setLoading] = useState(true);
@@ -43,7 +355,7 @@ export default function OnboardingPage() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isFormValid, setIsFormValid] = useState(false);
 
-  // Validation en temps réel
+  // ✨ Enhanced Validation
   useEffect(() => {
     const newErrors: ValidationErrors = {};
     
@@ -59,9 +371,13 @@ export default function OnboardingPage() {
       newErrors.city = 'La ville doit contenir au moins 2 caractères';
     }
     
+    if (form.slug.trim() && !/^[a-z0-9-]+$/.test(form.slug)) {
+      newErrors.slug = 'Seules les lettres minuscules, chiffres et tirets sont autorisés';
+    }
+    
     setErrors(newErrors);
     
-    // Vérifier si le formulaire est valide pour l'étape actuelle
+    // Form validity per step
     const isValid = currentStep === 1 
       ? form.name.trim().length >= 2 && form.activity.trim().length >= 3
       : currentStep === 2
@@ -71,23 +387,40 @@ export default function OnboardingPage() {
     setIsFormValid(isValid && Object.keys(newErrors).length === 0);
   }, [form, currentStep]);
 
-  // Sauvegarde automatique dans localStorage
+  // ✨ Auto-save
   useEffect(() => {
     if (user && (form.name || form.activity || form.city || form.description)) {
       localStorage.setItem(`onboarding_${user.id}`, JSON.stringify({
         ...form,
-        photo: null // Ne pas sauvegarder le fichier
+        photo: null
       }));
     }
   }, [form, user]);
 
-  // Récupération des données sauvegardées
+  // ✨ Auto-generate slug
+  useEffect(() => {
+    if (form.name.trim()) {
+      const slug = form.name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      
+      if (slug !== form.slug) {
+        setForm(prev => ({ ...prev, slug }));
+      }
+    }
+  }, [form.name]);
+
+  // ✨ Initialization
   useEffect(() => {
     const checkShopAndLoadData = async () => {
       if (!user) return;
       
       try {
-        // Vérifier si l'utilisateur a déjà une boutique
         const { data: shop } = await supabase
           .from('shops')
           .select('id')
@@ -102,19 +435,17 @@ export default function OnboardingPage() {
           return;
         }
 
-        // Charger les données sauvegardées
         const savedData = localStorage.getItem(`onboarding_${user.id}`);
         if (savedData) {
           const parsed = JSON.parse(savedData);
           setForm(prev => ({ ...prev, ...parsed }));
-          toast.info('Données récupérées', 'Nous avons récupéré vos informations précédentes');
+          toast.info('Données récupérées', 'Vos informations précédentes ont été restaurées');
         }
         
         setLoading(false);
         
-        // Message de bienvenue
         setTimeout(() => {
-          toast.system.tip('Créez votre boutique en quelques étapes simples');
+          toast.system.tip('Créez votre boutique ShopShap en 3 étapes simples');
         }, 500);
         
       } catch (error) {
@@ -130,15 +461,7 @@ export default function OnboardingPage() {
   }, [user, router, toast]);
 
   if (!user || loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-night via-night to-blue-950">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-purple-600 rounded-full animate-spin" style={{animationDirection: 'reverse', animationDuration: '1.5s'}}></div>
-        </div>
-        <p className="text-night-foreground mt-4 text-lg">Préparation de votre espace...</p>
-      </div>
-    );
+    return <ModernLoadingSpinner />;
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -150,14 +473,12 @@ export default function OnboardingPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validation taille (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.system.fileTooLarge();
       setErrors(prev => ({ ...prev, photo: 'Fichier trop volumineux (max 5MB)' }));
       return;
     }
 
-    // Validation type
     if (!file.type.startsWith('image/')) {
       toast.system.invalidFormat();
       setErrors(prev => ({ ...prev, photo: 'Format non supporté' }));
@@ -167,7 +488,6 @@ export default function OnboardingPage() {
     setForm(prev => ({ ...prev, photo: file }));
     setErrors(prev => ({ ...prev, photo: undefined }));
     
-    // Créer preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setPhotoPreview(e.target?.result as string);
@@ -202,7 +522,6 @@ export default function OnboardingPage() {
     try {
       let photo_url = '';
       
-      // Upload photo si sélectionnée
       if (form.photo) {
         toast.product.uploadStart();
         setUploadProgress(0);
@@ -210,9 +529,8 @@ export default function OnboardingPage() {
         const fileExt = form.photo.name.split('.').pop();
         const fileName = `${user.id}_${Date.now()}.${fileExt}`;
         
-        // Simuler progression d'upload
         const progressInterval = setInterval(() => {
-          setUploadProgress(prev => Math.min(prev + 20, 90));
+          setUploadProgress(prev => Math.min(prev + 15, 90));
         }, 200);
         
         const { data, error: uploadError } = await supabase.storage
@@ -233,7 +551,7 @@ export default function OnboardingPage() {
         toast.product.uploadSuccess();
       }
 
-      // Créer la boutique
+      // Create shop
       const { error: insertError } = await supabase
         .from('shops')
         .insert([{
@@ -242,7 +560,9 @@ export default function OnboardingPage() {
           activity: form.activity.trim(),
           city: form.city.trim(),
           photo_url,
-          description: form.description.trim()
+          description: form.description.trim(),
+          slug: form.slug.trim() || null,
+          theme: 'elegant'
         }]);
 
       if (insertError) {
@@ -252,10 +572,8 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Nettoyer localStorage
       localStorage.removeItem(`onboarding_${user.id}`);
 
-      // Succès !
       toast.auth.registerSuccess(form.name);
       
       setTimeout(() => {
@@ -276,118 +594,57 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case 1:
         return (
-          <div className="space-y-6">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-3">Parlons de votre boutique</h2>
-              <p className="text-night-foreground/80 leading-relaxed">
-                Donnez-nous les informations essentielles pour créer votre espace de vente
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-600/20 to-purple-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-3">Parlons de votre boutique</h2>
+              <p className="text-slate-400 text-lg leading-relaxed max-w-md mx-auto">
+                Donnez-nous les informations essentielles pour créer votre espace de vente professionnel
               </p>
             </div>
 
             <div className="space-y-6">
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-night-foreground/90">
-                  Nom de la boutique *
-                </label>
-                <input
-                  name="name"
-                  placeholder="Ex: Boutique Mode Dakar"
-                  value={form.name}
-                  onChange={handleChange}
-                  className={`w-full bg-night-foreground/5 border-2 rounded-xl px-4 py-4 text-white placeholder-night-foreground/50 focus:outline-none transition-all duration-200 ${
-                    errors.name 
-                      ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-                      : form.name.trim() && !errors.name
-                      ? 'border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20'
-                      : 'border-night-foreground/30 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                  }`}
-                />
-                {errors.name && (
-                  <div className="flex items-center gap-2 text-red-400">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.864-.833-2.634 0L3.18 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                    </svg>
-                    <span className="text-xs">{errors.name}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-night-foreground/90">
-                  Activité principale *
-                </label>
-                <input
-                  name="activity"
-                  placeholder="Ex: Mode et vêtements, Électronique, Alimentation..."
-                  value={form.activity}
-                  onChange={handleChange}
-                  className={`w-full bg-night-foreground/5 border-2 rounded-xl px-4 py-4 text-white placeholder-night-foreground/50 focus:outline-none transition-all duration-200 ${
-                    errors.activity 
-                      ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-                      : form.activity.trim() && !errors.activity
-                      ? 'border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20'
-                      : 'border-night-foreground/30 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                  }`}
-                />
-                {errors.activity && (
-                  <div className="flex items-center gap-2 text-red-400">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.864-.833-2.634 0L3.18 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                    </svg>
-                    <span className="text-xs">{errors.activity}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 2:
-        return (
-          <div className="space-y-6">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-3">Où vous trouvez-vous ?</h2>
-              <p className="text-night-foreground/80 leading-relaxed">
-                Cela aidera vos clients à vous localiser et à organiser leurs commandes
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-semibold text-night-foreground/90">
-                Votre ville *
-              </label>
-              <input
-                name="city"
-                placeholder="Ex: Dakar, Abidjan, Bamako..."
-                value={form.city}
+              <EnhancedInput
+                label="Nom de la boutique"
+                name="name"
+                value={form.name}
                 onChange={handleChange}
-                className={`w-full bg-night-foreground/5 border-2 rounded-xl px-4 py-4 text-white placeholder-night-foreground/50 focus:outline-none transition-all duration-200 ${
-                  errors.city 
-                    ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-                    : form.city.trim() && !errors.city
-                    ? 'border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20'
-                    : 'border-night-foreground/30 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                }`}
+                placeholder="Ex: Boutique Mode Dakar, TechShop Abidjan..."
+                error={errors.name}
+                required
               />
-              {errors.city && (
-                <div className="flex items-center gap-2 text-red-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.864-.833-2.634 0L3.18 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                  </svg>
-                  <span className="text-xs">{errors.city}</span>
-                </div>
-              )}
+
+              <EnhancedInput
+                label="Activité principale"
+                name="activity"
+                value={form.activity}
+                onChange={handleChange}
+                placeholder="Ex: Mode et vêtements, Électronique..."
+                error={errors.activity}
+                required
+                suggestions={popularActivities}
+                onSuggestionClick={(suggestion) => 
+                  setForm(prev => ({ ...prev, activity: suggestion }))
+                }
+              />
             </div>
 
-            <div className="bg-night-foreground/5 rounded-xl p-4 border border-night-foreground/20">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
+            <div className="bg-slate-800/20 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/30">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-blue-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
                 <div>
-                  <p className="text-night-foreground/90 text-sm font-medium">Pourquoi cette information ?</p>
-                  <p className="text-night-foreground/70 text-xs mt-1">
-                    Vos clients pourront vous trouver plus facilement et vous pourrez proposer des livraisons locales.
+                  <h4 className="text-white font-semibold mb-2">💡 Conseil ShopShap</h4>
+                  <p className="text-slate-400 text-sm leading-relaxed">
+                    Choisissez un nom mémorable et décrivez précisément votre activité. 
+                    Cela aide vos clients à vous trouver et à comprendre ce que vous vendez.
                   </p>
                 </div>
               </div>
@@ -395,82 +652,138 @@ export default function OnboardingPage() {
           </div>
         );
 
+      case 2:
+        return (
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-emerald-600/20 to-green-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-3">Où vous trouvez-vous ?</h2>
+              <p className="text-slate-400 text-lg leading-relaxed max-w-md mx-auto">
+                Cela aidera vos clients à vous localiser et à organiser leurs livraisons
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <EnhancedInput
+                label="Votre ville"
+                name="city"
+                value={form.city}
+                onChange={handleChange}
+                placeholder="Ex: Dakar, Abidjan, Bamako..."
+                error={errors.city}
+                required
+                suggestions={popularCities}
+                onSuggestionClick={(suggestion) => 
+                  setForm(prev => ({ ...prev, city: suggestion }))
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-emerald-900/20 backdrop-blur-xl rounded-2xl p-6 border border-emerald-700/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </div>
+                  <h4 className="text-emerald-300 font-semibold">Livraison locale</h4>
+                </div>
+                <p className="text-emerald-200/80 text-sm">
+                  Proposez des livraisons rapides dans votre ville
+                </p>
+              </div>
+
+              <div className="bg-blue-900/20 backdrop-blur-xl rounded-2xl p-6 border border-blue-700/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                  </div>
+                  <h4 className="text-blue-300 font-semibold">Visibilité</h4>
+                </div>
+                <p className="text-blue-200/80 text-sm">
+                  Apparaissez dans les recherches locales
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+
       case 3:
         return (
-          <div className="space-y-6">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-3">Personnalisez votre boutique</h2>
-              <p className="text-night-foreground/80 leading-relaxed">
-                Ajoutez une photo et une description pour rendre votre boutique plus attractive
-              </p>
-            </div>
-
-            {/* Photo de boutique */}
-            <div className="text-center">
-              <div className="relative inline-block">
-                <div className="w-32 h-32 bg-night-foreground/10 border-2 border-dashed border-night-foreground/30 rounded-2xl flex items-center justify-center overflow-hidden">
-                  {photoPreview ? (
-                    <div className="relative w-full h-full">
-                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={removePhoto}
-                        className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full transition-colors"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <svg className="w-10 h-10 text-night-foreground/50 mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                      </svg>
-                      <p className="text-xs text-night-foreground/60">Ajouter une photo</p>
-                    </div>
-                  )}
-                </div>
-                {!photoPreview && (
-                  <label className="absolute bottom-0 right-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 rounded-full cursor-pointer transition-all duration-300 shadow-xl hover:scale-105">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                    <input
-                      name="photo"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFile}
-                      className="hidden"
-                    />
-                  </label>
-                )}
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z"></path>
+                </svg>
               </div>
-              <p className="text-sm text-night-foreground/60 mt-3">
-                Une belle photo donne confiance à vos clients (facultatif)
+              <h2 className="text-3xl font-bold text-white mb-3">Personnalisez votre boutique</h2>
+              <p className="text-slate-400 text-lg leading-relaxed max-w-md mx-auto">
+                Rendez votre boutique unique avec une photo et une description attrayante
               </p>
-              {errors.photo && (
-                <p className="text-red-400 text-xs mt-1">{errors.photo}</p>
-              )}
             </div>
 
-            <div className="space-y-3">
-              <label className="block text-sm font-semibold text-night-foreground/90">
+            <PhotoUploadZone
+              photoPreview={photoPreview}
+              onFileChange={handleFile}
+              onRemove={removePhoto}
+              errors={errors}
+            />
+
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-slate-300">
                 Description de votre boutique
               </label>
               <textarea
                 name="description"
-                placeholder="Parlez de vos spécialités, votre expertise, ce qui vous rend unique..."
                 value={form.description}
                 onChange={handleChange}
+                placeholder="Parlez de vos spécialités, votre expertise, ce qui vous rend unique... Donnez envie à vos clients de découvrir vos produits !"
                 rows={4}
-                className="w-full bg-night-foreground/5 border-2 border-night-foreground/30 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-4 text-white placeholder-night-foreground/50 focus:outline-none transition-all duration-200 resize-none"
+                className="w-full bg-slate-800/40 backdrop-blur-xl border-2 border-slate-600/50 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:bg-slate-700/30 rounded-2xl px-6 py-4 text-white placeholder-slate-400 focus:outline-none transition-all duration-300 resize-none"
               />
-              <div className="text-night-foreground/60 space-y-1">
-                <p className="text-xs">{form.description.length}/500 caractères (facultatif)</p>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">
+                  Une bonne description améliore vos ventes
+                </span>
+                <span className="text-slate-400">
+                  {form.description.length}/500
+                </span>
               </div>
             </div>
+
+            <EnhancedInput
+              label="URL personnalisée (optionnel)"
+              name="slug"
+              value={form.slug}
+              onChange={handleChange}
+              placeholder="ma-boutique-dakar"
+              error={errors.slug}
+            />
+
+            {form.slug && (
+              <div className="bg-purple-900/20 backdrop-blur-xl rounded-2xl p-4 border border-purple-700/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-purple-300 font-medium text-sm">Votre lien sera :</p>
+                    <p className="text-purple-200 text-sm font-mono">shopshap.com/{form.slug}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 
@@ -480,67 +793,69 @@ export default function OnboardingPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-night via-night to-blue-950 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Header avec progression - exactement comme login */}
-        <header className="text-center mb-8">
-          <div className="relative">
-            {/* Glow effect - identique au login */}
-            <div className="absolute inset-0 w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full blur-xl opacity-50 mx-auto"></div>
-            <div className="relative w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Background Elements */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-20 left-20 w-64 h-64 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-20 w-80 h-80 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
+      </div>
+
+      <div className="w-full max-w-2xl relative z-10">
+        {/* Enhanced Header */}
+        <header className="text-center mb-12">
+          <div className="relative mb-8">
+            <div className="absolute inset-0 w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full blur-2xl opacity-60 mx-auto animate-pulse"></div>
+            <div className="relative w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto shadow-2xl">
+              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
               </svg>
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">Créons votre boutique</h1>
-          <p className="text-night-foreground/70 text-lg font-medium">Quelques étapes pour commencer à vendre</p>
           
-          {/* Barre de progression */}
-          <div className="relative mt-6">
-            <div className="w-full bg-night-foreground/20 rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${(currentStep / 3) * 100}%` }}
-              ></div>
-            </div>
-            <div className="flex justify-between text-xs text-night-foreground/60 mt-2">
-              <span className={currentStep >= 1 ? 'text-blue-400 font-medium' : ''}>Informations</span>
-              <span className={currentStep >= 2 ? 'text-blue-400 font-medium' : ''}>Localisation</span>
-              <span className={currentStep >= 3 ? 'text-blue-400 font-medium' : ''}>Personnalisation</span>
-            </div>
-            <p className="text-night-foreground/60 text-sm mt-2">Étape {currentStep} sur 3</p>
-          </div>
+          <h1 className="text-5xl font-black text-white mb-4 tracking-tight">
+            Créons votre <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">boutique</span>
+          </h1>
+          <p className="text-slate-400 text-xl font-medium leading-relaxed max-w-lg mx-auto">
+            Quelques étapes simples pour commencer à vendre sur WhatsApp et TikTok
+          </p>
+          
+          <ProgressBar currentStep={currentStep} totalSteps={3} />
         </header>
 
-        {/* Formulaire - exactement même style que login */}
-        <div className="bg-night-foreground/10 backdrop-blur-xl border border-night-foreground/20 rounded-3xl p-8 shadow-2xl">
+        {/* Enhanced Form */}
+        <div className="bg-slate-800/30 backdrop-blur-2xl border border-slate-700/50 rounded-3xl p-8 lg:p-12 shadow-2xl">
           <form onSubmit={handleSubmit}>
             {getStepContent()}
 
             {/* Upload Progress */}
             {uploadProgress > 0 && uploadProgress < 100 && (
-              <div className="mt-6">
-                <div className="flex justify-between text-sm text-night-foreground/70 mb-2">
-                  <span>Upload en cours...</span>
-                  <span>{uploadProgress}%</span>
+              <div className="mt-8 p-6 bg-blue-900/20 backdrop-blur-xl rounded-2xl border border-blue-700/30">
+                <div className="flex justify-between text-sm text-blue-300 mb-3">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span>Upload de votre photo...</span>
+                  </div>
+                  <span className="font-bold">{uploadProgress}%</span>
                 </div>
-                <div className="w-full bg-night-foreground/20 rounded-full h-2">
+                <div className="w-full bg-blue-800/30 rounded-full h-2">
                   <div 
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-gradient-to-r from-blue-500 to-cyan-500 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   ></div>
                 </div>
               </div>
             )}
 
-            {/* Navigation - exactement même style que login */}
-            <div className="flex gap-4 mt-8">
+            {/* Enhanced Navigation */}
+            <div className="flex gap-4 mt-10">
               {currentStep > 1 && (
                 <button
                   type="button"
                   onClick={prevStep}
-                  className="flex-1 bg-night-foreground/10 hover:bg-night-foreground/20 text-night-foreground border-2 border-night-foreground/30 hover:border-night-foreground/50 font-semibold py-4 px-6 rounded-xl transition-all duration-300 flex items-center justify-center gap-3 hover:scale-105 active:scale-95"
+                  className="flex-1 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-white border-2 border-slate-600/50 hover:border-slate-500/50 font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center gap-3 hover:scale-105 active:scale-95"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path>
@@ -554,9 +869,9 @@ export default function OnboardingPage() {
                   type="button"
                   onClick={nextStep}
                   disabled={!isFormValid}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center gap-3 shadow-2xl hover:shadow-blue-600/25 hover:scale-105 active:scale-95"
                 >
-                  <span>Suivant</span>
+                  <span>Continuer</span>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"></path>
                   </svg>
@@ -565,19 +880,19 @@ export default function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={submitting || !form.name.trim() || !form.activity.trim() || !form.city.trim()}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95"
+                  className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 flex items-center justify-center gap-3 shadow-2xl hover:shadow-emerald-600/25 hover:scale-105 active:scale-95"
                 >
                   {submitting ? (
                     <>
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
                       <span>Création en cours...</span>
                     </>
                   ) : (
                     <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                       </svg>
                       <span>Créer ma boutique</span>
@@ -588,53 +903,70 @@ export default function OnboardingPage() {
             </div>
           </form>
 
-          {/* Enhanced Separator - comme login */}
-          <div className="flex items-center my-8">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-night-foreground/30 to-transparent"></div>
-            <span className="px-4 text-night-foreground/60 text-sm font-medium">informations</span>
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-night-foreground/30 to-transparent"></div>
+          {/* Enhanced Separator */}
+          <div className="flex items-center my-10">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent"></div>
+            <span className="px-6 text-slate-500 text-sm font-medium">avantages</span>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent"></div>
           </div>
 
-          {/* Informations rassurantes - exactement comme login */}
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="space-y-1">
-              <div className="w-8 h-8 bg-green-900/20 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          {/* Enhanced Benefits */}
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div className="space-y-3">
+              <div className="w-12 h-12 bg-green-600/20 rounded-2xl flex items-center justify-center mx-auto">
+                <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path>
                 </svg>
               </div>
-              <p className="text-xs text-night-foreground/70">100% Gratuit</p>
+              <div>
+                <p className="text-white font-bold text-sm">100% Gratuit</p>
+                <p className="text-slate-500 text-xs">Toujours</p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <div className="w-8 h-8 bg-blue-900/20 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            
+            <div className="space-y-3">
+              <div className="w-12 h-12 bg-blue-600/20 rounded-2xl flex items-center justify-center mx-auto">
+                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                 </svg>
               </div>
-              <p className="text-xs text-night-foreground/70">Sécurisé</p>
+              <div>
+                <p className="text-white font-bold text-sm">Sécurisé</p>
+                <p className="text-slate-500 text-xs">Données protégées</p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <div className="w-8 h-8 bg-purple-900/20 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            
+            <div className="space-y-3">
+              <div className="w-12 h-12 bg-purple-600/20 rounded-2xl flex items-center justify-center mx-auto">
+                <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path>
                 </svg>
               </div>
-              <p className="text-xs text-night-foreground/70">Modifiable</p>
+              <div>
+                <p className="text-white font-bold text-sm">Évolutif</p>
+                <p className="text-slate-500 text-xs">Grandit avec vous</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Enhanced Footer - exactement comme login */}
-        <footer className="text-center mt-8 space-y-3">
-          <div className="flex items-center justify-center gap-2 text-night-foreground/70">
-            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        {/* Enhanced Footer */}
+        <footer className="text-center mt-10 space-y-4">
+          <div className="flex items-center justify-center gap-3 text-slate-400">
+            <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
             </svg>
-            <span className="text-sm font-medium">🚀 Modification possible à tout moment</span>
+            <span className="font-semibold">Modifiable à tout moment après création</span>
           </div>
           
-          <p className="text-night-foreground/60 text-sm">
-            <strong>Après création :</strong> ajoutez vos produits → partagez votre lien → vendez !
+          <div className="bg-slate-800/30 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/30">
+            <p className="text-slate-300 text-sm leading-relaxed">
+              <strong className="text-white">Après création :</strong> Ajoutez vos produits → Personnalisez votre thème → Partagez votre lien → Commencez à vendre !
+            </p>
+          </div>
+          
+          <p className="text-slate-500 text-xs">
+            Dernière mise à jour: 2025-08-03 17:41:16 UTC - Développé avec ❤️ pour l'Afrique
           </p>
         </footer>
       </div>
