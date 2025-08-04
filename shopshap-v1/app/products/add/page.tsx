@@ -408,6 +408,17 @@ export default function AddProductPage() {
         toast.success('Vidéo uploadée !', 'Parfait pour vos posts TikTok !');
       }
 
+      console.log('Données à insérer:', {
+        shop_id,
+        name: formData.name.trim(),
+        price: Number(formData.price),
+        description: formData.description.trim() || null,
+        stock: formData.stock === "" ? null : Number(formData.stock),
+        category: formData.category.trim() || null,
+        photo_url: photo_path,
+        video_url: video_path,
+      });
+
       // ✨ Enhanced database insertion
       const { error: insertError } = await supabase
         .from("products")

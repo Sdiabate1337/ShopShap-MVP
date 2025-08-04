@@ -67,7 +67,7 @@ export default function VerifyPage() {
       let res;
       
       if (method === 'whatsapp') {
-        // Use WhatsApp verification
+        // ✅ Use WhatsApp verification ONLY - NO Supabase Auth
         toast.info('Vérification WhatsApp...', 'Validation de votre code WhatsApp en cours');
         
         const whatsappResult = await whatsappAuth.verifyCode(code.trim());
@@ -93,34 +93,34 @@ export default function VerifyPage() {
           return;
         }
 
-        // WhatsApp verification successful - now create Supabase session
-        // For WhatsApp auth, we'll create a user session with phone
-        res = await supabase.auth.signInWithOtp({ 
-          phone: contact, 
-          token: '000000', // Use a dummy token since we've already verified with WhatsApp
-          type: 'sms'
-        });
-
-        // If Supabase auth fails but WhatsApp verification succeeded, continue anyway
-        if (res.error) {
-          console.warn('Supabase auth failed after WhatsApp verification:', res.error);
-          // Create a manual session or handle this case
-          // For now, we'll continue with the WhatsApp verification success
-          toast.auth.codeVerified();
-          
-          setTimeout(() => {
-            toast.auth.welcomeMessage();
-          }, 1500);
-
-          setTimeout(() => {
-            router.push('/onboarding');
-          }, 2500);
-          
-          setLoading(false);
-          return;
+        // ✅ WhatsApp verification successful - Store user data locally
+        console.log('🎉 WhatsApp verification successful:', whatsappResult);
+        
+        // Store user data in localStorage for onboarding
+        if (whatsappResult.userData) {
+          localStorage.setItem('user_data', JSON.stringify(whatsappResult.userData));
+          localStorage.setItem('whatsapp_verified', 'true');
+          localStorage.setItem('verification_method', 'whatsapp');
         }
         
+        // Success messages
+        toast.auth.codeVerified();
+        
+        setTimeout(() => {
+          const countryFlag = whatsappAuth.detectedCountry?.flag || '🌍';
+          toast.auth.welcomeMessage();
+        }, 1500);
+
+        // Redirect to onboarding
+        setTimeout(() => {
+          router.push('/onboarding');
+        }, 2500);
+        
+        setLoading(false);
+        return;
+        
       } else if (contact.includes('@')) {
+        // ✅ Email verification via Supabase (unchanged)
         toast.info('Vérification...', 'Validation de votre code email en cours');
         res = await supabase.auth.verifyOtp({ 
           email: contact, 
@@ -128,6 +128,7 @@ export default function VerifyPage() {
           type: 'email' 
         });
       } else {
+        // ✅ SMS verification via Supabase (unchanged)
         toast.info('Vérification...', 'Validation de votre code SMS en cours');
         res = await supabase.auth.verifyOtp({ 
           phone: contact, 
@@ -136,7 +137,8 @@ export default function VerifyPage() {
         });
       }
 
-      if (res.error) {
+      // Handle Supabase auth results (for email/SMS only)
+      if (res && res.error) {
         console.error('Erreur vérification:', res.error);
         setAttempts(prev => prev + 1);
         
@@ -159,7 +161,7 @@ export default function VerifyPage() {
         return;
       }
 
-      // Succès !
+      // ✅ Succès pour email/SMS !
       toast.auth.codeVerified();
       
       // Message de bienvenue
@@ -188,7 +190,7 @@ export default function VerifyPage() {
       let result;
       
       if (method === 'whatsapp') {
-        // Resend via WhatsApp
+        // ✅ Resend via WhatsApp
         const whatsappResult = await whatsappAuth.sendCode();
         
         if (!whatsappResult.success) {
@@ -199,6 +201,7 @@ export default function VerifyPage() {
         result = { error: null }; // Success for WhatsApp
         
       } else if (contact.includes('@')) {
+        // ✅ Resend via email
         result = await supabase.auth.signInWithOtp({
           email: contact,
           options: {
@@ -206,6 +209,7 @@ export default function VerifyPage() {
           }
         });
       } else {
+        // ✅ Resend via SMS
         result = await supabase.auth.signInWithOtp({ phone: contact });
       }
 
@@ -244,6 +248,44 @@ export default function VerifyPage() {
     }
   };
 
+  const getMethodIcon = () => {
+    if (method === 'whatsapp') {
+      return (
+        <div className="w-12 h-12 bg-green-900/20 rounded-xl flex items-center justify-center">
+          <svg className="w-6 h-6 text-green-400" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.785"/>
+          </svg>
+        </div>
+      );
+    } else if (contact.includes('@')) {
+      return (
+        <div className="w-12 h-12 bg-blue-900/20 rounded-xl flex items-center justify-center">
+          <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 7.89a1 1 0 001.42 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+      );
+    } else {
+      return (
+        <div className="w-12 h-12 bg-green-900/20 rounded-xl flex items-center justify-center">
+          <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+      );
+    }
+  };
+
+  const getMethodText = () => {
+    if (method === 'whatsapp') {
+      return '📱 Vérifiez votre WhatsApp';
+    } else if (contact.includes('@')) {
+      return '📧 Vérifiez votre boîte email';
+    } else {
+      return '📱 Vérifiez vos SMS';
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-night via-night to-blue-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -257,35 +299,35 @@ export default function VerifyPage() {
               </svg>
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">Vérification</h1>
+          <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">
+            {method === 'whatsapp' ? 'Vérification WhatsApp' : 'Vérification'}
+          </h1>
           <p className="text-night-foreground/80 text-lg leading-relaxed">
-            Entrez le code de vérification pour sécuriser votre compte
+            {method === 'whatsapp' 
+              ? 'Entrez le code reçu sur WhatsApp' 
+              : 'Entrez le code de vérification pour sécuriser votre compte'
+            }
           </p>
         </div>
 
         {/* Contact Information Card */}
         <div className="bg-night-foreground/10 backdrop-blur-xl border border-night-foreground/20 rounded-2xl p-6 mb-8 shadow-xl">
           <div className="flex items-center gap-4">
-            {contact.includes('@') ? (
-              <div className="w-12 h-12 bg-blue-900/20 rounded-xl flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 7.89a1 1 0 001.42 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                </svg>
-              </div>
-            ) : (
-              <div className="w-12 h-12 bg-green-900/20 rounded-xl flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-              </div>
-            )}
+            {getMethodIcon()}
             <div className="flex-1">
-              <p className="text-white font-semibold text-lg">Code envoyé</p>
+              <p className="text-white font-semibold text-lg">
+                {method === 'whatsapp' ? 'Code WhatsApp envoyé' : 'Code envoyé'}
+              </p>
               <p className="text-night-foreground/70 font-medium">{formatContact(contact)}</p>
               <p className="text-night-foreground/60 text-sm mt-1">
-                {contact.includes('@') ? '📧 Vérifiez votre boîte email' : '📱 Vérifiez vos SMS'}
+                {getMethodText()}
               </p>
             </div>
+            {method === 'whatsapp' && whatsappAuth.detectedCountry && (
+              <div className="text-2xl">
+                {whatsappAuth.detectedCountry.flag}
+              </div>
+            )}
           </div>
         </div>
 
@@ -427,9 +469,19 @@ export default function VerifyPage() {
               <div>
                 <p className="text-yellow-400 font-semibold mb-1">Problème de réception ?</p>
                 <ul className="text-yellow-300/80 text-sm space-y-1">
-                  <li>• Vérifiez votre dossier spam/courrier indésirable</li>
-                  <li>• Assurez-vous d'avoir du réseau</li>
-                  <li>• Le code peut prendre jusqu'à 2 minutes à arriver</li>
+                  {method === 'whatsapp' ? (
+                    <>
+                      <li>• Vérifiez que vous avez rejoint le sandbox Twilio</li>
+                      <li>• Assurez-vous d'avoir du réseau WhatsApp</li>
+                      <li>• Le code peut prendre jusqu'à 2 minutes à arriver</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• Vérifiez votre dossier spam/courrier indésirable</li>
+                      <li>• Assurez-vous d'avoir du réseau</li>
+                      <li>• Le code peut prendre jusqu'à 2 minutes à arriver</li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>
@@ -454,7 +506,7 @@ export default function VerifyPage() {
         {process.env.NODE_ENV === 'development' && (
           <div className="mt-6 p-3 bg-purple-900/20 border border-purple-800/50 rounded-xl">
             <p className="text-purple-400 text-xs font-mono">
-              🛠️ Dev Mode - Contact: {contact} | Attempts: {attempts} | Cooldown: {resendCooldown}s
+              🛠️ Dev Mode - Contact: {contact} | Method: {method} | Attempts: {attempts} | Cooldown: {resendCooldown}s
             </p>
           </div>
         )}

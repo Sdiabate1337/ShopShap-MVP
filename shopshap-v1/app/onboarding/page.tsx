@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/AuthContext';
 import { useToasts } from '@/hooks/useToast';
 
 // ✨ Enhanced Types
@@ -22,6 +21,15 @@ interface ValidationErrors {
   city?: string;
   photo?: string;
   slug?: string;
+}
+
+interface UserData {
+  id?: string;
+  phone?: string;
+  email?: string;
+  country?: string;
+  whatsapp_verified?: boolean;
+  verification_method?: string;
 }
 
 // ✨ Activity Suggestions
@@ -334,10 +342,10 @@ function EnhancedInput({
 
 // ✨ Main Onboarding Component
 export default function UltraModernOnboardingPage() {
-  const { user } = useAuth();
   const toast = useToasts();
   const router = useRouter();
   
+  const [user, setUser] = useState<UserData | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [form, setForm] = useState<FormData>({
     name: '',
@@ -355,8 +363,156 @@ export default function UltraModernOnboardingPage() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isFormValid, setIsFormValid] = useState(false);
 
-  // ✨ Enhanced Validation
+  // ✅ Authentication check with useCallback to prevent re-renders
+  const checkAuth = useCallback(async () => {
+    try {
+      console.log('🔍 [Auth] Vérification authentification...');
+
+      // 1. Check Supabase session first
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        console.log('✅ [Auth] Session Supabase trouvée:', session.user.id);
+        const userData = {
+          id: session.user.id,
+          phone: session.user.phone,
+          email: session.user.email,
+          verification_method: session.user.phone ? 'whatsapp' : 'email',
+          user_metadata: session.user.user_metadata
+        };
+        setUser(userData);
+        return userData;
+      }
+
+      // 2. Check WhatsApp localStorage
+      const whatsappVerified = localStorage.getItem('whatsapp_verified');
+      const userData = localStorage.getItem('user_data');
+      
+      if (whatsappVerified === 'true' && userData) {
+        try {
+          const parsedUserData = JSON.parse(userData);
+          
+          if (parsedUserData.id) {
+            console.log('✅ [Auth] WhatsApp user trouvé:', parsedUserData.id);
+            const userDataFormatted = {
+              id: parsedUserData.id,
+              phone: parsedUserData.phone,
+              verification_method: 'whatsapp',
+              country: parsedUserData.country,
+              whatsapp_verified: true
+            };
+            setUser(userDataFormatted);
+            return userDataFormatted;
+          } else {
+            throw new Error('User data incomplete');
+          }
+        } catch (error) {
+          console.error('❌ [Auth] Erreur parsing user data:', error);
+          localStorage.removeItem('whatsapp_verified');
+          localStorage.removeItem('user_data');
+          router.push('/login');
+          return null;
+        }
+      } else {
+        console.log('❌ [Auth] Aucune authentification trouvée');
+        router.push('/login');
+        return null;
+      }
+      
+    } catch (error) {
+      console.error('❌ [Auth] Erreur vérification:', error);
+      router.push('/login');
+      return null;
+    }
+  }, [router]);
+
+  // ✅ Shop check with useCallback
+  const checkShopAndLoadData = useCallback(async (userData: UserData) => {
+    if (!userData?.id) {
+      console.log('⚠️ [Shop] Pas de userData, skip vérification boutique');
+      return;
+    }
+    
+    try {
+      console.log('🏪 [Shop] Vérification boutique existante pour:', userData.id);
+
+      // Search for existing shop using user_id (UUID)
+      const { data: shop, error: shopError } = await supabase
+        .from('shops')
+        .select('id, name')
+        .eq('user_id', userData.id)
+        .maybeSingle();
+
+      if (shopError && shopError.code !== 'PGRST116') {
+        console.error('❌ [Shop] Erreur recherche boutique:', shopError);
+        throw shopError;
+      }
+        
+      if (shop) {
+        console.log('✅ [Shop] Boutique existante trouvée:', shop.name);
+        toast.success?.('Boutique trouvée', `Redirection vers ${shop.name}...`);
+        setTimeout(() => {
+          router.replace('/dashboard');
+        }, 1000);
+        return;
+      }
+
+      console.log('ℹ️ [Shop] Aucune boutique trouvée, procédure onboarding');
+
+      // Load saved data
+      const savedData = localStorage.getItem(`onboarding_${userData.id}`);
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          setForm(prev => ({ ...prev, ...parsed }));
+          toast.info?.('Données récupérées', 'Vos informations précédentes ont été restaurées');
+        } catch (parseError) {
+          console.error('❌ [Shop] Erreur parsing saved data:', parseError);
+          localStorage.removeItem(`onboarding_${userData.id}`);
+        }
+      }
+      
+      // Tip after a short delay
+      setTimeout(() => {
+        toast.system?.tip?.('Créez votre boutique ShopShap en 3 étapes simples');
+      }, 500);
+      
+    } catch (error) {
+      console.error('❌ [Shop] Erreur vérification boutique:', error);
+      toast.system?.networkError?.();
+    }
+  }, [router, toast]);
+
+  // ✅ Main useEffect with empty dependency array
   useEffect(() => {
+    let isMounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        console.log('🚀 [Init] Démarrage initialisation onboarding');
+        const userData = await checkAuth();
+        
+        if (isMounted && userData) {
+          await checkShopAndLoadData(userData);
+        }
+      } catch (error) {
+        console.error('❌ [Init] Erreur initialisation:', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []); // ✅ Empty dependency array
+
+  // ✅ Form validation with useCallback
+  const validateForm = useCallback(() => {
     const newErrors: ValidationErrors = {};
     
     if (form.name.trim() && form.name.trim().length < 2) {
@@ -377,7 +533,6 @@ export default function UltraModernOnboardingPage() {
     
     setErrors(newErrors);
     
-    // Form validity per step
     const isValid = currentStep === 1 
       ? form.name.trim().length >= 2 && form.activity.trim().length >= 3
       : currentStep === 2
@@ -387,18 +542,28 @@ export default function UltraModernOnboardingPage() {
     setIsFormValid(isValid && Object.keys(newErrors).length === 0);
   }, [form, currentStep]);
 
-  // ✨ Auto-save
+  // ✅ Validation effect
   useEffect(() => {
-    if (user && (form.name || form.activity || form.city || form.description)) {
-      localStorage.setItem(`onboarding_${user.id}`, JSON.stringify({
+    validateForm();
+  }, [validateForm]);
+
+  // ✅ Auto-save with useCallback
+  const saveFormData = useCallback(() => {
+    if (user?.id && (form.name || form.activity || form.city || form.description)) {
+      const dataToSave = {
         ...form,
         photo: null
-      }));
+      };
+      localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(dataToSave));
     }
-  }, [form, user]);
+  }, [user?.id, form]);
 
-  // ✨ Auto-generate slug
   useEffect(() => {
+    saveFormData();
+  }, [saveFormData]);
+
+  // ✅ Auto-generate slug with useCallback
+  const generateSlug = useCallback(() => {
     if (form.name.trim()) {
       const slug = form.name
         .toLowerCase()
@@ -413,54 +578,17 @@ export default function UltraModernOnboardingPage() {
         setForm(prev => ({ ...prev, slug }));
       }
     }
-  }, [form.name]);
+  }, [form.name, form.slug]);
 
-  // ✨ Initialization
   useEffect(() => {
-    const checkShopAndLoadData = async () => {
-      if (!user) return;
-      
-      try {
-        const { data: shop } = await supabase
-          .from('shops')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-          
-        if (shop) {
-          toast.shop.welcome('Votre boutique');
-          setTimeout(() => {
-            router.replace('/dashboard');
-          }, 1000);
-          return;
-        }
+    generateSlug();
+  }, [generateSlug]);
 
-        const savedData = localStorage.getItem(`onboarding_${user.id}`);
-        if (savedData) {
-          const parsed = JSON.parse(savedData);
-          setForm(prev => ({ ...prev, ...parsed }));
-          toast.info('Données récupérées', 'Vos informations précédentes ont été restaurées');
-        }
-        
-        setLoading(false);
-        
-        setTimeout(() => {
-          toast.system.tip('Créez votre boutique ShopShap en 3 étapes simples');
-        }, 500);
-        
-      } catch (error) {
-        console.error('Erreur initialisation:', error);
-        toast.system.networkError();
-        setLoading(false);
-      }
-    };
-    
-    if (user) {
-      checkShopAndLoadData();
-    }
-  }, [user, router, toast]);
+  if (loading) {
+    return <ModernLoadingSpinner />;
+  }
 
-  if (!user || loading) {
+  if (!user) {
     return <ModernLoadingSpinner />;
   }
 
@@ -474,13 +602,13 @@ export default function UltraModernOnboardingPage() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.system.fileTooLarge();
+      toast.system?.fileTooLarge();
       setErrors(prev => ({ ...prev, photo: 'Fichier trop volumineux (max 5MB)' }));
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      toast.system.invalidFormat();
+      toast.system?.invalidFormat();
       setErrors(prev => ({ ...prev, photo: 'Format non supporté' }));
       return;
     }
@@ -494,7 +622,7 @@ export default function UltraModernOnboardingPage() {
     };
     reader.readAsDataURL(file);
 
-    toast.shop.photoSelected();
+    toast.shop?.photoSelected();
   };
 
   const removePhoto = () => {
@@ -523,7 +651,7 @@ export default function UltraModernOnboardingPage() {
       let photo_url = '';
       
       if (form.photo) {
-        toast.product.uploadStart();
+        toast.product?.uploadStart();
         setUploadProgress(0);
         
         const fileExt = form.photo.name.split('.').pop();
@@ -541,51 +669,61 @@ export default function UltraModernOnboardingPage() {
         setUploadProgress(100);
           
         if (uploadError) {
-          console.error('Erreur upload:', uploadError);
-          toast.product.uploadError('Impossible d\'uploader la photo');
+          console.error('❌ Erreur upload:', uploadError);
+          toast.product?.uploadError('Impossible d\'uploader la photo');
           setSubmitting(false);
           return;
         }
         
         photo_url = data?.path || '';
-        toast.product.uploadSuccess();
+        toast.product?.uploadSuccess();
       }
 
-      // Create shop
+      // ✅ Create shop with UUID
+      const shopData = {
+        user_id: user?.id || crypto.randomUUID(), // ✅ Add null check with fallback UUID
+        name: form.name.trim(),
+        activity: form.activity.trim(),
+        city: form.city.trim(),
+        photo_url,
+        description: form.description.trim(),
+        slug: form.slug.trim() || `shop-${(user?.id || crypto.randomUUID()).slice(0, 8)}`,
+        theme: 'elegant',
+        currency: 'FCFA',
+        phone: user?.phone || '',
+        owner_phone: user?.phone || '',
+        whatsapp: user?.phone || '',
+        whatsapp_verified: user?.whatsapp_verified || false
+      };
+
+      console.log('✅ Création boutique avec données:', shopData);
+
       const { error: insertError } = await supabase
         .from('shops')
-        .insert([{
-          user_id: user.id,
-          name: form.name.trim(),
-          activity: form.activity.trim(),
-          city: form.city.trim(),
-          photo_url,
-          description: form.description.trim(),
-          slug: form.slug.trim() || null,
-          theme: 'elegant'
-        }]);
+        .insert([shopData]);
 
       if (insertError) {
-        console.error('Erreur création boutique:', insertError);
-        toast.system.serverError();
+        console.error('❌ Erreur création boutique:', insertError);
+        toast.system?.serverError();
         setSubmitting(false);
         return;
       }
 
+      // Clean up
       localStorage.removeItem(`onboarding_${user.id}`);
 
-      toast.auth.registerSuccess(form.name);
+      toast.auth?.registerSuccess(form.name);
       
       setTimeout(() => {
-        toast.shop.welcome(form.name);
+        toast.shop?.welcome(form.name);
         setTimeout(() => {
           router.push('/dashboard');
         }, 1000);
       }, 1500);
 
     } catch (error) {
-      console.error('Erreur onboarding:', error);
-      toast.system.networkError();
+      console.error('❌ Erreur onboarding:', error);
+      toast.system?.networkError();
       setSubmitting(false);
     }
   };
@@ -605,6 +743,18 @@ export default function UltraModernOnboardingPage() {
               <p className="text-slate-400 text-lg leading-relaxed max-w-md mx-auto">
                 Donnez-nous les informations essentielles pour créer votre espace de vente professionnel
               </p>
+              
+              {/* Show user verification status */}
+              {user.phone && (
+                <div className="mt-4 inline-flex items-center gap-2 bg-green-900/20 border border-green-700/30 rounded-full px-4 py-2">
+                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span className="text-green-300 text-sm font-medium">
+                    WhatsApp vérifié : {user.phone}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-6">
@@ -966,9 +1116,25 @@ export default function UltraModernOnboardingPage() {
           </div>
           
           <p className="text-slate-500 text-xs">
-            Dernière mise à jour: 2025-08-03 17:41:16 UTC - Développé avec ❤️ pour l'Afrique
+            Dernière mise à jour: 2025-08-03 21:50:15 UTC - Développé avec ❤️ pour l'Afrique
           </p>
         </footer>
+
+        {/* Debug info (Development only) */}
+        {process.env.NODE_ENV === 'development' && user && (
+          <div className="mt-6 p-3 bg-purple-900/20 border border-purple-800/50 rounded-xl">
+            <p className="text-purple-400 text-xs font-mono mb-2">
+              🛠️ Dev Mode - User Auth Status:
+            </p>
+            <div className="space-y-1 text-xs">
+              <p className="text-green-400">✅ UUID: {user.id}</p>
+              <p className="text-blue-400">📱 Phone: {user.phone || 'N/A'}</p>
+              <p className="text-yellow-400">📧 Email: {user.email || 'N/A'}</p>
+              <p className="text-purple-400">🔐 Method: {user.verification_method}</p>
+              <p className="text-cyan-400">🌍 Country: {user.country || 'N/A'}</p>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

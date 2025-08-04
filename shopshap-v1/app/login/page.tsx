@@ -362,9 +362,6 @@ export default function UltraModernLoginPage() {
     }
   };
 
-  const handleDemoAccess = () => {
-    toast.system.featureComingSoon('Accès démo bientôt disponible');
-  };
 
   // ✨ Click outside to close countries dropdown
   useEffect(() => {
