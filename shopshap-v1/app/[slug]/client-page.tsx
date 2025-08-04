@@ -108,14 +108,14 @@ const shopThemes = {
 // Extend Window interface to include gtag and fbq
 declare global {
   interface Window {
-    gtag?: (...args: any[]) => void;
-    fbq?: (...args: any[]) => void;
+    gtag?: (...args: unknown[]) => void;
+    fbq?: (...args: unknown[]) => void;
   }
 }
 
 // ✨ Enhanced Analytics Hook
 function useAnalytics() {
-  const trackEvent = (eventName: string, properties: Record<string, any>) => {
+  const trackEvent = (eventName: string, properties: Record<string, unknown>) => {
     if (typeof window !== 'undefined') {
       try {
         // Google Analytics 4
