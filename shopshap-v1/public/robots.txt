@@ -1,0 +1,24 @@
+# This robots.txt file is optimized for performance and SEO
+
+User-agent: *
+Allow: /
+Allow: /_next/static/
+Allow: /public/
+
+# Performance optimizations
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /onboarding/
+Disallow: /login/
+Disallow: /verify/
+
+# Allow specific shop pages (these are the most important for SEO)
+Allow: /*/
+
+# Sitemap
+Sitemap: https://shopshap.com/sitemap.xml
+
+# Crawl-delay for better server performance
+Crawl-delay: 1
