@@ -211,7 +211,7 @@ export function useOptimizedProducts(shopId: string, options: {
 
       if (fetchError) throw fetchError;
 
-      const newProducts = data || [];
+      const newProducts: Product[] = (data as any) || [];
       const totalCount = count || 0;
 
       if (append) {
@@ -340,9 +340,10 @@ export function useOptimizedShop(slug: string, options: {
 
       if (fetchError) throw fetchError;
 
-      setShop(data);
+      const shopData = data as any as Shop;
+      setShop(shopData);
       // Cache shop data for longer (shops don't change often)
-      mobileCache.set(cacheKey, data, 30 * 60 * 1000); // 30 min cache
+      mobileCache.set(cacheKey, shopData, 30 * 60 * 1000); // 30 min cache
 
     } catch (err: any) {
       console.error('Shop fetch error:', err);
