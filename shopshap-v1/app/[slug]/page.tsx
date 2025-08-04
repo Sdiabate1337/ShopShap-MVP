@@ -3,12 +3,13 @@ import { supabase } from '@/lib/supabaseClient';
 import ShopClientPage from './client-page';
 
 // ✅ Métadonnées pour le SEO
-export async function generateMetadata({ params }: { params: { slug: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   try {
     const { data: shop } = await supabase
       .from('shops')
       .select('name, description, activity, city, photo_url')
-      .eq('slug', params.slug)
+      .eq('slug', slug)
       .single();
 
     if (!shop) {
@@ -30,7 +31,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       openGraph: {
         title: `${shop.name} - Boutique en ligne`,
         description: shop.description || `${shop.activity} à ${shop.city}`,
-        url: `/${params.slug}`,
+        url: `/${slug}`,
         siteName: 'ShopShap',
         type: 'website',
         locale: 'fr_FR',
@@ -47,7 +48,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
         description: shop.description || `Boutique ${shop.activity} à ${shop.city}`,
       },
       alternates: {
-        canonical: `/${params.slug}`,
+        canonical: `/${slug}`,
       },
     };
   } catch (error) {
@@ -61,6 +62,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 // ✅ Composant serveur qui rend le composant client
-export default function ShopSlugPage({ params }: { params: { slug: string } }) {
-  return <ShopClientPage slug={params.slug} />;
+export default async function ShopSlugPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  return <ShopClientPage slug={slug} />;
 }

@@ -34,6 +34,7 @@ export type CachedData = {
 };
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const URL_CACHE_DURATION = 55 * 60 * 1000; // 55 minutes (5min safety margin)
 const DEFAULT_PAGE_SIZE = 12;
 
 export function useProductsCache(shopId: string | null) {
@@ -52,7 +53,7 @@ export function useProductsCache(shopId: string | null) {
     return Date.now() - cachedData.lastFetch < CACHE_DURATION;
   }, []);
 
-  // Générer les URLs signées avec cache
+  // Générer les URLs signées avec cache optimisé (55 minutes)
   const getSignedUrl = useCallback(async (
     bucket: string, 
     path: string, 
@@ -61,8 +62,8 @@ export function useProductsCache(shopId: string | null) {
     const cacheKey = `${bucket}:${path}`;
     const cached = urlCacheRef.current.get(cacheKey);
     
-    // Vérifier si l'URL en cache est encore valide (avec marge de sécurité)
-    if (cached && cached.expiry > Date.now() + 300000) { // 5 min de marge
+    // Vérifier si l'URL en cache est encore valide (avec marge de sécurité de 5 minutes)
+    if (cached && cached.expiry > Date.now() + (5 * 60 * 1000)) {
       return cached.url;
     }
 
@@ -75,10 +76,10 @@ export function useProductsCache(shopId: string | null) {
         return null;
       }
       
-      // Mettre en cache l'URL
+      // Mettre en cache l'URL avec expiration de 55 minutes
       urlCacheRef.current.set(cacheKey, {
         url: data.signedUrl,
-        expiry: Date.now() + (expiresIn * 1000) // Convertir en millisecondes
+        expiry: Date.now() + URL_CACHE_DURATION
       });
       
       return data.signedUrl;
@@ -87,28 +88,55 @@ export function useProductsCache(shopId: string | null) {
     }
   }, []);
 
-  // Traiter les produits avec URLs signées
+  // Traiter les produits avec URLs signées en lot (batch processing)
   const processProductsWithUrls = useCallback(async (products: Product[]): Promise<ProductWithUrls[]> => {
-    const results = await Promise.allSettled(
-      products.map(async (product): Promise<ProductWithUrls> => {
-        const [signedPhotoUrl, signedVideoUrl] = await Promise.all([
-          product.photo_url ? getSignedUrl('shop-photos', product.photo_url) : Promise.resolve(null),
-          product.video_url ? getSignedUrl('product-videos', product.video_url) : Promise.resolve(null)
-        ]);
+    // Grouper les requêtes par bucket pour optimiser les appels
+    const photoRequests = products
+      .filter(p => p.photo_url)
+      .map(p => ({ product: p, bucket: 'shop-photos', path: p.photo_url! }));
+    
+    const videoRequests = products
+      .filter(p => p.video_url)
+      .map(p => ({ product: p, bucket: 'product-videos', path: p.video_url! }));
 
-        return {
-          ...product,
-          signedPhotoUrl,
-          signedVideoUrl
-        };
-      })
+    // Traiter les photos en parallèle
+    const photoResults = await Promise.allSettled(
+      photoRequests.map(async ({ product, bucket, path }) => ({
+        productId: product.id,
+        url: await getSignedUrl(bucket, path)
+      }))
     );
 
-    return results
-      .filter((result): result is PromiseFulfilledResult<ProductWithUrls> => 
-        result.status === 'fulfilled'
-      )
-      .map(result => result.value);
+    // Traiter les vidéos en parallèle
+    const videoResults = await Promise.allSettled(
+      videoRequests.map(async ({ product, bucket, path }) => ({
+        productId: product.id,
+        url: await getSignedUrl(bucket, path)
+      }))
+    );
+
+    // Créer des maps pour accès rapide
+    const photoMap = new Map<string, string | null>();
+    const videoMap = new Map<string, string | null>();
+
+    photoResults.forEach(result => {
+      if (result.status === 'fulfilled') {
+        photoMap.set(result.value.productId, result.value.url);
+      }
+    });
+
+    videoResults.forEach(result => {
+      if (result.status === 'fulfilled') {
+        videoMap.set(result.value.productId, result.value.url);
+      }
+    });
+
+    // Construire le résultat final
+    return products.map(product => ({
+      ...product,
+      signedPhotoUrl: photoMap.get(product.id) || null,
+      signedVideoUrl: videoMap.get(product.id) || null
+    }));
   }, [getSignedUrl]);
 
   // Construire la requête Supabase avec filtres et tri

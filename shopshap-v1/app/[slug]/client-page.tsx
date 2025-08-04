@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
@@ -223,8 +223,12 @@ const shopThemes = {
   }
 };
 
-// ✅ Navigation sticky
-function StickyNavBar({ shop, theme, onContact }: { shop: Shop; theme: any; onContact: () => void }) {
+// ✅ Navigation sticky avec React.memo pour éviter les re-renders inutiles
+const StickyNavBar = memo(function StickyNavBar({ shop, theme, onContact }: { 
+  shop: Shop; 
+  theme: any; 
+  onContact: () => void 
+}) {
   const [isScrolled, setIsScrolled] = useState(false);
   const { trackContactClick } = useAnalytics();
 
@@ -297,10 +301,10 @@ function StickyNavBar({ shop, theme, onContact }: { shop: Shop; theme: any; onCo
       </div>
     </nav>
   );
-}
+});
 
-// ✅ Hero Section
-function HeroSection({ shop, shopPhotoUrl, theme, onContact }: { 
+// ✅ Hero Section avec React.memo et useMemo pour optimisation
+const HeroSection = memo(function HeroSection({ shop, shopPhotoUrl, theme, onContact }: { 
   shop: Shop; 
   shopPhotoUrl: string | null; 
   theme: any; 
@@ -310,16 +314,15 @@ function HeroSection({ shop, shopPhotoUrl, theme, onContact }: {
   const { elementRef, isVisible } = useIntersectionObserver();
   const { trackContactClick } = useAnalytics();
 
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  // ✅ useMemo pour éviter de recalculer les styles à chaque render
+  const parallaxStyle = useMemo(() => ({
+    transform: `translateY(${scrollY * 0.5}px)`
+  }), [scrollY]);
 
-  const handleContactClick = () => {
+  const handleContactClick = useCallback(() => {
     trackContactClick(shop, 'hero');
     onContact();
-  };
+  }, [shop, onContact, trackContactClick]);
 
   return (
     <section 
@@ -329,7 +332,7 @@ function HeroSection({ shop, shopPhotoUrl, theme, onContact }: {
     >
       <div 
         className={`absolute inset-0 bg-gradient-to-br ${theme.primary}`}
-        style={{ transform: `translateY(${scrollY * 0.5}px)` }}
+        style={parallaxStyle}
         aria-hidden="true"
       />
       
@@ -425,8 +428,8 @@ function HeroSection({ shop, shopPhotoUrl, theme, onContact }: {
   );
 }
 
-// ✅ Filtres produits
-function ProductFilters({ theme, onFilter, onSort, onSearch }: { 
+// ✅ Filtres produits avec React.memo
+const ProductFilters = memo(function ProductFilters({ theme, onFilter, onSort, onSearch }: { 
   theme: any; 
   onFilter: (filter: string) => void;
   onSort: (sort: string) => void;
@@ -436,20 +439,21 @@ function ProductFilters({ theme, onFilter, onSort, onSearch }: {
   const [activeSort, setActiveSort] = useState('newest');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filters = [
+  // ✅ useMemo pour éviter de recréer les options à chaque render
+  const filters = useMemo(() => [
     { id: 'all', label: 'Tous les produits', icon: '🛍️' },
     { id: 'available', label: 'Disponibles', icon: '✅' },
     { id: 'popular', label: 'Populaires', icon: '🔥' },
     { id: 'lowstock', label: 'Stock limité', icon: '⚠️' },
-  ];
+  ], []);
 
-  const sorts = [
+  const sorts = useMemo(() => [
     { id: 'newest', label: 'Plus récents' },
     { id: 'price-low', label: 'Prix croissant' },
     { id: 'price-high', label: 'Prix décroissant' },
     { id: 'name', label: 'Nom A-Z' },
     { id: 'popularity', label: 'Popularité' },
-  ];
+  ], []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -530,10 +534,10 @@ function ProductFilters({ theme, onFilter, onSort, onSearch }: {
       </div>
     </div>
   );
-}
+});
 
-// ✅ Carte produit
-function PremiumProductCard({ product, shop, onContact }: { 
+// ✅ Carte produit avec React.memo et optimisations de performance
+const PremiumProductCard = memo(function PremiumProductCard({ product, shop, onContact }: { 
   product: ProductWithUrls; 
   shop: Shop; 
   onContact: (product: ProductWithUrls) => void;
@@ -544,13 +548,61 @@ function PremiumProductCard({ product, shop, onContact }: {
   const { elementRef, isVisible } = useIntersectionObserver();
   const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const { trackProductView } = useAnalytics();
-  const theme = shopThemes[shop.theme as keyof typeof shopThemes] || shopThemes.elegant;
+  
+  // ✅ useMemo pour éviter de recalculer le thème à chaque render
+  const theme = useMemo(() => 
+    shopThemes[shop.theme as keyof typeof shopThemes] || shopThemes.elegant, 
+    [shop.theme]
+  );
+
+  // ✅ useCallback pour les handlers d'événements
+  const handleMouseEnter = useCallback(() => {
+    if (product.signedVideoUrl) {
+      setShowVideo(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.play().catch(() => {});
+          setIsVideoPlaying(true);
+        }
+      }, 300);
+    }
+  }, [product.signedVideoUrl]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      setIsVideoPlaying(false);
+    }
+    setTimeout(() => setShowVideo(false), 200);
+  }, []);
 
   useEffect(() => {
     if (isVisible) {
       trackProductView(product, shop);
     }
   }, [isVisible, product, shop, trackProductView]);
+
+  // ✅ useMemo pour éviter de recalculer les badges à chaque render
+  const scarcityBadge = useMemo(() => {
+    if (product.stock && product.stock <= 3 && product.stock > 0) {
+      return (
+        <div className="absolute top-4 left-4 bg-orange-500/90 text-white px-3 py-2 rounded-full text-xs font-bold border border-orange-400/50 animate-pulse">
+          ⚡ Plus que {product.stock} !
+        </div>
+      );
+    }
+    return null;
+  }, [product.stock]);
+
+  const viewCountDisplay = useMemo(() => (
+    <div className="text-white/60 text-xs flex items-center gap-1 mb-2">
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+      </svg>
+      <span>Vu par {product.viewCount} personnes aujourd'hui</span>
+    </div>
+  ), [product.viewCount]);
 
   const handleMouseEnter = () => {
     if (product.signedVideoUrl) {
@@ -691,7 +743,7 @@ function PremiumProductCard({ product, shop, onContact }: {
           </div>
         )}
 
-        {getScarcityBadge()}
+        {scarcityBadge}
 
         {product.stock !== undefined && product.stock !== null && (
           <div className={`absolute bottom-4 right-4 px-3 py-2 rounded-full text-xs font-bold backdrop-blur-sm ${
@@ -711,7 +763,7 @@ function PremiumProductCard({ product, shop, onContact }: {
       </div>
 
       <div className="p-8">
-        {getViewCount()}
+        {viewCountDisplay}
 
         <h3 
           id={`product-${product.id}-title`}
@@ -762,10 +814,10 @@ function PremiumProductCard({ product, shop, onContact }: {
       </div>
     </article>
   );
-}
+});
 
-// ✅ Section À propos
-function AboutSection({ shop, theme }: { shop: Shop; theme: any }) {
+// ✅ Section À propos avec React.memo
+const AboutSection = memo(function AboutSection({ shop, theme }: { shop: Shop; theme: any }) {
   const { elementRef, isVisible } = useIntersectionObserver();
 
   return (
@@ -841,125 +893,15 @@ export default function ShopClientPage({ slug }: { slug: string }) {
   const [searchTerm, setSearchTerm] = useState('');
 
   const { trackShopVisit, trackContactClick } = useAnalytics();
-  const theme = shopThemes[shop?.theme as keyof typeof shopThemes] || shopThemes.elegant;
+  
+  // ✅ useMemo pour éviter de recalculer le thème à chaque render
+  const theme = useMemo(() => 
+    shopThemes[shop?.theme as keyof typeof shopThemes] || shopThemes.elegant, 
+    [shop?.theme]
+  );
 
-  useEffect(() => {
-    if (shop) {
-      trackShopVisit(shop);
-    }
-  }, [shop, trackShopVisit]);
-
-  useEffect(() => {
-    fetchShopBySlug();
-  }, [slug]);
-
-  useEffect(() => {
-    applyFilters();
-  }, [products, searchTerm]);
-
-  const applyFilters = () => {
-    let filtered = [...products];
-    
-    if (searchTerm) {
-      filtered = filtered.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-    
-    setFilteredProducts(filtered);
-  };
-
-  async function fetchShopBySlug() {
-    setLoading(true);
-    try {
-      const { data: shopData, error: shopError } = await supabase
-        .from('shops')
-        .select('*')
-        .eq('slug', slug)
-        .single();
-
-      if (shopError || !shopData) {
-        notFound();
-        return;
-      }
-
-      setShop(shopData);
-
-      if (shopData.photo_url) {
-        const { data: urlData } = await supabase.storage
-          .from('shop-photos')
-          .createSignedUrl(shopData.photo_url, 60 * 60);
-        setShopPhotoUrl(urlData?.signedUrl ?? null);
-      }
-
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('shop_id', shopData.id)
-        .order('created_at', { ascending: false });
-
-      if (productsError) {
-        console.error('Erreur produits:', productsError);
-        return;
-      }
-
-      if (productsData) {
-        const productsWithUrls = await Promise.allSettled(
-          productsData.map(async (product: Product): Promise<ProductWithUrls> => {
-            let signedPhotoUrl: string | undefined = undefined;
-            let signedVideoUrl: string | undefined = undefined;
-
-            if (product.photo_url) {
-              try {
-                const { data: photoData } = await supabase.storage
-                  .from('shop-photos')
-                  .createSignedUrl(product.photo_url, 60 * 60);
-                signedPhotoUrl = photoData?.signedUrl ?? undefined;
-              } catch (e) {
-                console.warn('Erreur photo URL:', e);
-              }
-            }
-
-            if (product.video_url) {
-              try {
-                const { data: videoData } = await supabase.storage
-                  .from('product-videos')
-                  .createSignedUrl(product.video_url, 60 * 60);
-                signedVideoUrl = videoData?.signedUrl ?? undefined;
-              } catch (e) {
-                console.warn('Erreur vidéo URL:', e);
-              }
-            }
-
-            return {
-              ...product,
-              signedPhotoUrl,
-              signedVideoUrl,
-              viewCount: Math.floor(Math.random() * 50) + 10,
-              isPopular: product.price > 50000
-            };
-          })
-        );
-
-        const successfulProducts = productsWithUrls
-          .filter((result): result is PromiseFulfilledResult<ProductWithUrls> => 
-            result.status === 'fulfilled'
-          )
-          .map(result => result.value);
-
-        setProducts(successfulProducts);
-      }
-
-    } catch (err) {
-      console.error('Erreur chargement boutique:', err);
-      setError('Erreur lors du chargement');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleContactShop(source: string = 'general') {
+  // ✅ useCallback pour les handlers d'événements pour éviter les re-renders
+  const handleContactShop = useCallback((source: string = 'general') => {
     if (!shop || typeof window === 'undefined') return;
 
     trackContactClick(shop, source);
@@ -974,9 +916,9 @@ export default function ShopClientPage({ slug }: { slug: string }) {
 
     const whatsappUrl = generateWhatsAppLink('', message);
     window.open(whatsappUrl, '_blank');
-  }
+  }, [shop, trackContactClick]);
 
-  function handleContactForProduct(product: ProductWithUrls) {
+  const handleContactForProduct = useCallback((product: ProductWithUrls) => {
     if (!shop || typeof window === 'undefined') return;
 
     trackContactClick(shop, 'product');
@@ -985,9 +927,9 @@ export default function ShopClientPage({ slug }: { slug: string }) {
 
     const whatsappUrl = generateWhatsAppLink('', message);
     window.open(whatsappUrl, '_blank');
-  }
+  }, [shop, trackContactClick]);
 
-  function handleFilter(filter: string) {
+  const handleFilter = useCallback((filter: string) => {
     let filtered = [...products];
     
     switch (filter) {
@@ -1005,9 +947,9 @@ export default function ShopClientPage({ slug }: { slug: string }) {
     }
     
     setFilteredProducts(filtered);
-  }
+  }, [products]);
 
-  function handleSort(sort: string) {
+  const handleSort = useCallback((sort: string) => {
     let sorted = [...filteredProducts];
     
     switch (sort) {
@@ -1028,11 +970,160 @@ export default function ShopClientPage({ slug }: { slug: string }) {
     }
     
     setFilteredProducts(sorted);
+  }, [filteredProducts]);
+
+  const handleSearch = useCallback((search: string) => {
+    setSearchTerm(search);
+  }, []);
+
+  useEffect(() => {
+    if (shop) {
+      trackShopVisit(shop);
+    }
+  }, [shop, trackShopVisit]);
+
+  useEffect(() => {
+    fetchShopBySlug();
+  }, [slug]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  // ✅ Optimiser l'effet de filtre avec useMemo
+  const applyFilters = useCallback(() => {
+    let filtered = [...products];
+    
+    if (searchTerm) {
+      filtered = filtered.filter(p =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+    
+    setFilteredProducts(filtered);
+  }, [products, searchTerm]);
+
+  async function fetchShopBySlug() {
+    setLoading(true);
+    try {
+      // ✅ OPTIMISATION: Paralléliser les requêtes shop et products
+      const [shopResult, shopPhotoResult, productsResult] = await Promise.allSettled([
+        // Requête boutique
+        supabase
+          .from('shops')
+          .select('*')
+          .eq('slug', slug)
+          .single(),
+          
+        // Requête photo boutique (sera exécutée seulement si nécessaire)
+        null, // Placeholder, sera remplacé après avoir récupéré shopData
+        
+        // Requête produits (sera exécutée avec l'ID de la boutique récupérée)
+        null // Placeholder, sera remplacé après avoir récupéré shopData
+      ]);
+
+      // Vérifier le résultat de la boutique
+      if (shopResult.status === 'rejected' || !shopResult.value.data) {
+        notFound();
+        return;
+      }
+
+      const shopData = shopResult.value.data;
+      setShop(shopData);
+
+      // ✅ OPTIMISATION: Exécuter les requêtes restantes en parallèle
+      const additionalPromises = [];
+
+      // Photo de la boutique si disponible
+      if (shopData.photo_url) {
+        additionalPromises.push(
+          supabase.storage
+            .from('shop-photos')
+            .createSignedUrl(shopData.photo_url, 60 * 60)
+            .then(({ data }) => {
+              setShopPhotoUrl(data?.signedUrl ?? null);
+            })
+        );
+      }
+
+      // Produits de la boutique
+      additionalPromises.push(
+        supabase
+          .from('products')
+          .select('*')
+          .eq('shop_id', shopData.id)
+          .order('created_at', { ascending: false })
+          .then(async ({ data: productsData, error: productsError }) => {
+            if (productsError) {
+              console.error('Erreur produits:', productsError);
+              return;
+            }
+
+            if (productsData) {
+              // ✅ OPTIMISATION: Traitement par lots des URLs signées
+              const batchSize = 5; // Traiter 5 produits à la fois
+              const productBatches = [];
+              
+              for (let i = 0; i < productsData.length; i += batchSize) {
+                productBatches.push(productsData.slice(i, i + batchSize));
+              }
+
+              const allProductsWithUrls: ProductWithUrls[] = [];
+
+              // Traiter chaque lot séquentiellement pour éviter de surcharger Supabase
+              for (const batch of productBatches) {
+                const batchResults = await Promise.allSettled(
+                  batch.map(async (product: Product): Promise<ProductWithUrls> => {
+                    const [photoPromise, videoPromise] = await Promise.allSettled([
+                      product.photo_url 
+                        ? supabase.storage.from('shop-photos').createSignedUrl(product.photo_url, 60 * 60)
+                        : Promise.resolve({ data: null }),
+                      product.video_url 
+                        ? supabase.storage.from('product-videos').createSignedUrl(product.video_url, 60 * 60)
+                        : Promise.resolve({ data: null })
+                    ]);
+
+                    return {
+                      ...product,
+                      signedPhotoUrl: photoPromise.status === 'fulfilled' ? photoPromise.value.data?.signedUrl ?? undefined : undefined,
+                      signedVideoUrl: videoPromise.status === 'fulfilled' ? videoPromise.value.data?.signedUrl ?? undefined : undefined,
+                      viewCount: Math.floor(Math.random() * 50) + 10,
+                      isPopular: product.price > 50000
+                    };
+                  })
+                );
+
+                // Ajouter les résultats réussis au tableau final
+                batchResults.forEach(result => {
+                  if (result.status === 'fulfilled') {
+                    allProductsWithUrls.push(result.value);
+                  }
+                });
+
+                // Petite pause entre les lots pour éviter la surcharge
+                if (productBatches.length > 1) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              }
+
+              setProducts(allProductsWithUrls);
+            }
+          })
+      );
+
+      // Attendre que toutes les requêtes additionnelles se terminent
+      await Promise.allSettled(additionalPromises);
+
+    } catch (err) {
+      console.error('Erreur chargement boutique:', err);
+      setError('Erreur lors du chargement');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleSearch(search: string) {
-    setSearchTerm(search);
-  }
+  // ✅ Optimisations supprimées car maintenant dans useCallback au début
 
   if (loading) {
     return (

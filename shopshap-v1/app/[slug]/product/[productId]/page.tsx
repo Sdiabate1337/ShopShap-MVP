@@ -4,16 +4,17 @@ import ProductClientPage from './client-page';
 
 // ✅ Métadonnées SEO pour le produit - CORRIGÉES
 export async function generateMetadata({ params }: { 
-  params: { slug: string; productId: string } 
+  params: Promise<{ slug: string; productId: string }> 
 }) {
   try {
-    console.log('🔍 Génération métadonnées pour:', params);
+    const { slug, productId } = await params;
+    console.log('🔍 Génération métadonnées pour:', { slug, productId });
     
     // Récupérer la boutique par slug
     const { data: shop } = await supabase
       .from('shops')
       .select('id, name, activity, city')
-      .eq('slug', params.slug)
+      .eq('slug', slug)
       .single();
 
     if (!shop) {
@@ -28,7 +29,7 @@ export async function generateMetadata({ params }: {
     const { data: product } = await supabase
       .from('products')
       .select('name, description, price, photo_url, category, stock')
-      .eq('id', params.productId)
+      .eq('id', productId)
       .eq('shop_id', shop.id)
       .single();
 
@@ -61,7 +62,7 @@ export async function generateMetadata({ params }: {
       openGraph: {
         title: `${product.name} - ${product.price.toLocaleString()} FCFA`,
         description: productDescription,
-        url: `/${params.slug}/product/${params.productId}`,
+        url: `/${slug}/product/${productId}`,
         siteName: 'ShopShap',
         type: 'website', // ✅ CHANGÉ de 'product' à 'website'
         locale: 'fr_FR',
@@ -91,10 +92,10 @@ export async function generateMetadata({ params }: {
       
       // ✅ Métadonnées alternatives
       alternates: {
-        canonical: `/${params.slug}/product/${params.productId}`,
+        canonical: `/${slug}/product/${productId}`,
         languages: {
-          'fr': `/${params.slug}/product/${params.productId}`,
-          'fr-SN': `/${params.slug}/product/${params.productId}`
+          'fr': `/${slug}/product/${productId}`,
+          'fr-SN': `/${slug}/product/${productId}`
         }
       },
       
@@ -113,7 +114,7 @@ export async function generateMetadata({ params }: {
         'business:contact_data:locality': shop.city,
         'business:contact_data:region': 'Dakar',
         'business:contact_data:country_name': 'Sénégal',
-        'business:contact_data:website': `/${params.slug}`,
+        'business:contact_data:website': `/${slug}`,
         
         // Métadonnées de localisation
         'geo:region': 'SN', // Code pays Sénégal
@@ -173,12 +174,13 @@ export async function generateMetadata({ params }: {
 }
 
 // ✅ Export par défaut avec gestion d'erreur
-export default function ProductSlugPage({ params }: { 
-  params: { slug: string; productId: string } 
+export default async function ProductSlugPage({ params }: { 
+  params: Promise<{ slug: string; productId: string }> 
 }) {
   // ✅ Validation des paramètres
-  if (!params.slug || !params.productId) {
-    console.error('❌ Paramètres manquants:', params);
+  const { slug, productId } = await params;
+  if (!slug || !productId) {
+    console.error('❌ Paramètres manquants:', { slug, productId });
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <div className="text-center text-white">
@@ -189,7 +191,7 @@ export default function ProductSlugPage({ params }: {
     );
   }
 
-  return <ProductClientPage slug={params.slug} productId={params.productId} />;
+  return <ProductClientPage slug={slug} productId={productId} />;
 }
 
 // ✅ Métadonnées statiques pour améliorer les performances
